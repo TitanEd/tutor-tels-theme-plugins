@@ -130,7 +130,7 @@ RUN npm install '@edx/brand@git+https://github.com/TitanEd/tels-brand.git#master
 )
 
 
-hooks.Filters.ENV_PATCHES.add_item(
+hooks.Filters.ENV_PATCHES.add_items(
     (
         "mfe-dockerfile-post-npm-install-authn",
         "RUN npm install '@edx/brand@git+https://github.com/TitanEd/tels-brand.git#master",
