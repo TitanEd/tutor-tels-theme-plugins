@@ -129,16 +129,18 @@ RUN npm install '@edx/brand@git+https://github.com/TitanEd/tels-brand.git#master
     ]
 )
 
-
-hooks.Filters.ENV_PATCHES.add_items(
+hooks.Filters.ENV_PATCHES.add_item(
     (
         "mfe-dockerfile-post-npm-install-authn",
-        "RUN npm install '@edx/brand@git+https://github.com/TitanEd/tels-brand.git#master",
-    ),
+        "RUN npm install '@edx/brand@git+https://github.com/TitanEd/tels-brand.git#master'",
+    )
+)
+
+hooks.Filters.ENV_PATCHES.add_item(
     (
         "mfe-dockerfile-post-npm-install-course-authoring",
-        "RUN npm install '@edx/brand@git+https://github.com/TitanEd/tels-brand.git#master",
-    ),
+        "RUN npm install '@edx/brand@git+https://github.com/TitanEd/tels-brand.git#master'",
+    )
 )
 
 # Include js file in lms main.html, main_django.html, and certificate.html
