@@ -1,6 +1,11 @@
-
 const ThemedLogo = () => {
-  const BASE_URL = getConfig().LMS_BASE_URL;
+  const config = getConfig();
+  const BASE_URL = config.LMS_BASE_URL;
+  // Prefer MFE_CONFIG / theming assets (tels_brand_image) over hardcoded Indigo paths.
+  const logoUrl =
+    config.LOGO_URL || `${BASE_URL}/theming/asset/images/logo.png`;
+  const logoWhiteUrl =
+    config.LOGO_WHITE_URL || `${BASE_URL}/theming/asset/images/logo-white.png`;
 
   return (
     <>
@@ -17,9 +22,9 @@ const ThemedLogo = () => {
           }
         `}
       </style>
-      <a href={`${BASE_URL}/dashboard`} title="Open edX" className="logo">
-        <img className="logo-image" src={`${BASE_URL}/static/indigo/images/logo.png`} alt="Open edX" />
-        <img className="logo-image logo-white" src={`${BASE_URL}/static/indigo/images/logo-white.png`} alt="Open edX" />
+      <a href={`${BASE_URL}/dashboard`} title="Home" className="logo">
+        <img className="logo-image" src={logoUrl} alt="Home" />
+        <img className="logo-image logo-white" src={logoWhiteUrl} alt="Home" />
       </a>
     </>
   );

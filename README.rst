@@ -28,12 +28,17 @@ Configuration
 
 - ``INDIGO_WELCOME_MESSAGE`` (default: "The place for all your online learning")
 - ``INDIGO_PRIMARY_COLOR`` (default: "#3b85ff")
-- ``INDIGO_FOOTER_NAV_LINKS`` (default: ``[{"title": "About", "url": "/about"}, {"title": "Contact", "url": "/contact"}]``)
+- ``INDIGO_FOOTER_EXPLORE_LINKS`` / ``INDIGO_FOOTER_COMPANY_LINKS`` / ``INDIGO_FOOTER_SUPPORT_LINKS`` — marketing footer columns (``titleKey`` + ``url``); shown on every MFE
+- ``INDIGO_FOOTER_CONTACT`` — email, web_url, web_label, address_lines
+- ``INDIGO_FOOTER_SOCIAL_LINKS`` — social icons on every MFE footer
+- ``INDIGO_FOOTER_NAV_LINKS`` — legacy flat list (kept for compatibility)
 - ``INDIGO_ENABLE_DARK_TOGGLE`` (default: True)
 
-The ``INDIGO_*`` settings listed above may be modified by running ``tutor config save --set INDIGO_...=...``. For instance, to remove all links from the footer, run::
+Shared footer markup is ``IndigoFooter`` (``.tels-footer``); styles come from ``tels-brand-openedx`` design tokens. See ``docs/branding/header-footer-rules.md``.
 
-    tutor config save --set "INDIGO_FOOTER_NAV_LINKS=[]"
+The ``INDIGO_*`` settings listed above may be modified by running ``tutor config save --set INDIGO_...=...``. For instance, to clear social links, run::
+
+    tutor config save --set "INDIGO_FOOTER_SOCIAL_LINKS=[]"
 
 Or, to set the primary color to forest green, run::
 

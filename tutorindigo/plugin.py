@@ -26,17 +26,103 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         "WELCOME_MESSAGE": "The place for all your online learning",
         "PRIMARY_COLOR": "#15376D",  # Indigo
         "ENABLE_DARK_TOGGLE": True,
-        # Footer links are dictionaries with a "title" and "url"
-        # To remove all links, run:
-        # tutor config save --set INDIGO_FOOTER_NAV_LINKS=[]
+        "ENABLE_LANGUAGE_MENU": True,
+        # Languages shown in the MFE header dropdown (need 2+ to render).
+        "SUPPORTED_LANGUAGES": [
+            {"value": "en", "label": "English"},
+            {"value": "ar", "label": "العربية"},
+            {"value": "es-419", "label": "Español (Latinoamérica)"},
+            {"value": "fr", "label": "Français"},
+            {"value": "pt-pt", "label": "Português"},
+            {"value": "zh-cn", "label": "中文 (简体)"},
+        ],
+        # Marketing footer columns — shown on every MFE (IndigoFooter).
+        # titleKey maps to indigo.footer.link.* intl messages in IndigoFooter.jsx.
+        "FOOTER_EXPLORE_LINKS": [
+            {"titleKey": "home", "url": "/"},
+            {"titleKey": "courses", "url": "/courses"},
+            {"titleKey": "about", "url": "/about"},
+            {"titleKey": "contact", "url": "/contact"},
+        ],
+        "FOOTER_COMPANY_LINKS": [
+            {"titleKey": "about", "url": "/about"},
+            {"titleKey": "contact", "url": "/contact"},
+        ],
+        "FOOTER_SUPPORT_LINKS": [
+            {"titleKey": "privacy", "url": "/privacy"},
+            {"titleKey": "terms", "url": "/terms"},
+        ],
+        "FOOTER_CONTACT": {
+            "email": "Legal@TitanEd.com",
+            "web_url": "https://titaned.com/",
+            "web_label": "titaned.com",
+            "address_lines": [
+                "TitanEd, Gurugram,",
+                "Haryana, India",
+            ],
+        },
+        # Legacy flat nav list (kept for backward-compatible MFE_CONFIG).
         "FOOTER_NAV_LINKS": [
             {"title": "About Us", "url": "/about"},
-            {"title": "Blog", "url": "/blog"},
-            {"title": "Donate", "url": "/donate"},
-            {"title": "Terms of Service", "url": "/tos"},
-            {"title": "Privacy Policy", "url": "/privacy"},
-            {"title": "Help", "url": "/help"},
-            {"title": "Contact Us", "url": "/contact"},
+            {"title": "Contact", "url": "/contact"},
+        ],
+        # Social icons shown on every MFE footer.
+        # name must be one of: facebook, twitter, linkedin, youtube, instagram
+        "FOOTER_SOCIAL_LINKS": [
+            {
+                "name": "linkedin",
+                "label": "LinkedIn",
+                "url": "https://www.linkedin.com/company/titaned",
+            },
+            {
+                "name": "facebook",
+                "label": "Facebook",
+                "url": "https://titaned.com/",
+            },
+            {
+                "name": "twitter",
+                "label": "X (Twitter)",
+                "url": "https://titaned.com/",
+            },
+            {
+                "name": "youtube",
+                "label": "YouTube",
+                "url": "https://titaned.com/",
+            },
+            {
+                "name": "instagram",
+                "label": "Instagram",
+                "url": "https://titaned.com/",
+            },
+        ],
+        # Marketing header (TelsHeader) + footer (IndigoFooter) — URLs
+        # overridable via tutor config. Default to the public MFE's own route
+        # (Tutor's default MFE routing serves the "public" app at
+        # ${MFE_HOST}/public, not the site root) so these work both from the
+        # public MFE itself and from every other MFE's header/footer linking
+        # back to it. Override HOME_URL if your deployment mounts the public
+        # MFE somewhere else, e.g.:
+        #   tutor config save --set 'INDIGO_HOME_URL="https://learn.example.com"'
+        # COURSES_URL: public MFE /public/courses (search submits here with ?q=).
+        # LEARNER_DASHBOARD_URL is usually set by Tutor MFE; override if needed.
+        "HOME_URL": "/public",
+        "COURSES_URL": "/public/courses",
+        "ABOUT_URL": "/public/about",
+        "CONTACT_URL": "/public/contact",
+        "PRIVACY_URL": "/public/privacy",
+        "TERMS_URL": "/public/terms",
+        "HEADER_GUEST_NAV": [
+            {"titleKey": "home", "urlKey": "home"},
+            {"titleKey": "courses", "urlKey": "courses"},
+            {"titleKey": "about", "urlKey": "about"},
+            {"titleKey": "contact", "urlKey": "contact"},
+        ],
+        "HEADER_AUTH_NAV": [
+            {"titleKey": "home", "urlKey": "home"},
+            {"titleKey": "dashboard", "urlKey": "dashboard"},
+            {"titleKey": "courses", "urlKey": "courses"},
+            {"titleKey": "about", "urlKey": "about"},
+            {"titleKey": "contact", "urlKey": "contact"},
         ],
     },
     "unique": {},
@@ -107,7 +193,7 @@ hooks.Filters.CONFIG_UNIQUE.add_items(
 hooks.Filters.CONFIG_OVERRIDES.add_items(list(config["overrides"].items()))
 
 
-#  MFEs that are styled using Indigo
+#  MFEs that install the Indigo brand package at image build time
 indigo_styled_mfes = [
     "learning",
     "learner-dashboard",
@@ -115,6 +201,28 @@ indigo_styled_mfes = [
     "account",
     "discussions",
     "authoring",
+    "authn",
+    "gradebook",
+    "communications",
+    "ora-grading",
+    "admin-console",
+    "catalog",
+    "public",
+]
+
+# env.config.jsx (Imports.jsx patch) is baked into EVERY styled MFE's image
+# and unconditionally imports these packages for the shared TelsHeader /
+# IndigoFooter / HeaderControls / LanguageMenu bundle. Not every upstream MFE
+# repo declares them (e.g. authoring, discussions, gradebook, learning have
+# none of these in package.json), so `npm run build` fails with
+# "Module not found" for those apps and the whole `tutor images build mfe`
+# aborts. Install them explicitly for every MFE that gets the shared bundle,
+# regardless of what its own package.json already has.
+MARKETING_CHROME_NPM_DEPS = [
+    "@fortawesome/react-fontawesome@^0.2.6",
+    "@fortawesome/free-brands-svg-icons@^6.7.2",
+    "@fortawesome/free-solid-svg-icons@^6.7.2",
+    "universal-cookie@^7.2.2",
 ]
 
 for mfe in indigo_styled_mfes:
@@ -124,17 +232,11 @@ for mfe in indigo_styled_mfes:
                 f"mfe-dockerfile-post-npm-install-{mfe}",
                 """
 RUN npm install '@edx/brand@github:@edly-io/brand-openedx#indigo-2.6.0'
-""",  # noqa: E501
+RUN npm install {deps}
+""".format(deps=" ".join(f"'{dep}'" for dep in MARKETING_CHROME_NPM_DEPS)),  # noqa: E501
             ),
         ]
     )
-
-hooks.Filters.ENV_PATCHES.add_item(
-    (
-        "mfe-dockerfile-post-npm-install-authn",
-        "RUN npm install '@edx/brand@github:@edly-io/brand-openedx#indigo-2.6.0'",
-    )
-)
 
 # Add react components and patches from tutor-indigo
 for path in itertools.chain(
@@ -147,12 +249,19 @@ for path in itertools.chain(
         hooks.Filters.ENV_PATCHES.add_item((os.path.basename(path), patch_file.read()))
 
 
-for mfe in indigo_styled_mfes:
-    PLUGIN_SLOTS.add_item(
-        (
-            mfe,
-            "org.openedx.frontend.layout.footer.v1",
-            """
+HEADER_CONTROLS_PLUGIN = """
+            {
+                op: PLUGIN_OPERATIONS.Insert,
+                widget: {
+                    id: 'indigo_header_controls',
+                    type: DIRECT_PLUGIN,
+                    priority: 1,
+                    RenderWidget: HeaderControls,
+                },
+            },
+"""
+
+FOOTER_PLUGINS = """
             {
                 op: PLUGIN_OPERATIONS.Hide,
                 widgetId: 'default_contents',
@@ -166,145 +275,148 @@ for mfe in indigo_styled_mfes:
                     RenderWidget: IndigoFooter,
                 },
             },
+"""
+
+# Full Lovable-style marketing header (public / catalog HeaderSlot).
+TELS_HEADER_PLUGINS = """
             {
                 op: PLUGIN_OPERATIONS.Insert,
                 widget: {
-                    id: 'read_theme_cookie',
+                    id: 'tels_header',
                     type: DIRECT_PLUGIN,
-                    priority: 2,
-                    RenderWidget: AddDarkTheme,
+                    priority: 1,
+                    RenderWidget: TelsHeader,
                 },
             },
-  """,
-        ),
-    )
-    if mfe != "learning":
-        PLUGIN_SLOTS.add_item(
-            (
-                mfe,
-                "desktop_secondary_menu_slot",
-                """
-                {
-                    op: PLUGIN_OPERATIONS.Insert,
-                    widget: {
-                        id: 'theme_switch_button',
-                        type: DIRECT_PLUGIN,
-                        RenderWidget: ToggleThemeButton,
-                    },
-                },
-        """,
-            )
-        )
-        PLUGIN_SLOTS.add_items(
-            [
-                (
-                    # Hide the default mobile header as it only shows logo
-                    mfe,
-                    "mobile_header_slot",
-                    """
-                {
-                    op: PLUGIN_OPERATIONS.Hide,
-                    widgetId: 'default_contents',
-                }
-                """,
-                ),
-                (
-                    mfe,
-                    "mobile_header_slot",
-                    """
-                {
-                    op: PLUGIN_OPERATIONS.Insert,
-                    widget: {
-                        id: 'theme_switch_button',
-                        type: DIRECT_PLUGIN,
-                        RenderWidget: MobileViewHeader,
-                    },
-                },
-                """,
-                ),
-            ]
-        )
+"""
 
-PLUGIN_SLOTS.add_items(
-    [
-        (
-            # Hide the default Help Link added in plugin slot
-            "learning",
-            "learning_help_slot",
-            """
+
+def _add_footer(mfe: str, slot: str = "org.openedx.frontend.layout.footer.v1") -> None:
+    PLUGIN_SLOTS.add_item((mfe, slot, FOOTER_PLUGINS))
+
+
+def _add_tels_header(mfe: str, slot: str = "org.openedx.frontend.layout.header.v1") -> None:
+    PLUGIN_SLOTS.add_item((mfe, slot, TELS_HEADER_PLUGINS))
+
+
+def _add_header_controls_slots(mfe: str) -> None:
+    """
+    Language + dark-mode in header for logged-in AND logged-out users.
+
+    Desktop secondary menu is only rendered when logged in, so also inject into
+    the logged-out items slot. Same idea for mobile.
+    """
+    for slot in (
+        "desktop_secondary_menu_slot",
+        "desktop_logged_out_items_slot",
+        "mobile_logged_out_items_slot",
+        "org.openedx.frontend.layout.header_mobile_user_menu_trigger.v1",
+    ):
+        PLUGIN_SLOTS.add_item((mfe, slot, HEADER_CONTROLS_PLUGIN))
+
+
+# LOW priority so catalog/public (added by other Tutor plugins) are present.
+@MFE_APPS.add(priority=hooks.priorities.LOW)  # type: ignore
+def _add_header_language_and_dark_mode(
+    mfes: dict[str, MFE_ATTRS_TYPE],
+) -> dict[str, MFE_ATTRS_TYPE]:
+    """Attach language dropdown + dark-mode switch to every registered MFE."""
+    for mfe in mfes:
+        name = str(mfe)
+
+        # Catalog: TelsHeader via HeaderSlot (PluginSlot host in catalog App).
+        if name == "catalog":
+            _add_tels_header(name)
+            _add_footer(name)
+            continue
+
+        # Public: TelsHeader via HeaderSlot + env.config.jsx (local npm start).
+        if name == "public":
+            _add_tels_header(name)
+            _add_footer(name)
+            continue
+
+        # LearningHeader MFEs (learning + discussions) use learning_* slots,
+        # not desktop_secondary_menu_slot from the standard site header.
+        if name in ("learning", "discussions"):
+            PLUGIN_SLOTS.add_items(
+                [
+                    (
+                        name,
+                        "learning_help_slot",
+                        """
         {
             op: PLUGIN_OPERATIONS.Hide,
             widgetId: 'default_contents',
-        }
-        """,
-        ),
-        (
-            "learning",
-            "learning_help_slot",
-            """
-        {
-            op: PLUGIN_OPERATIONS.Insert,
-            widget: {
-                id: 'theme_switch_button',
-                type: DIRECT_PLUGIN,
-                RenderWidget: ToggleThemeButton,
-            },
         },
-        """,
-        ),
-    ]
-)
+"""
+                        + HEADER_CONTROLS_PLUGIN,
+                    ),
+                    (
+                        name,
+                        "learning_logged_out_items_slot",
+                        HEADER_CONTROLS_PLUGIN,
+                    ),
+                ]
+            )
+            _add_footer(name)
+            continue
 
-PLUGIN_SLOTS.add_items(
-    [
-        (
-            "authoring",
-            "org.openedx.frontend.layout.studio_header_search_button_slot.v1",
-            """
-        {
-            op: PLUGIN_OPERATIONS.Insert,
-            widget: {
-                priority: 10,
-                id: 'custom_notification_tray_before',
-                type: DIRECT_PLUGIN,
-                RenderWidget: ToggleThemeButton,
-            },
-        },
-        """,
-        ),
-        (
-            "authoring",
-            "org.openedx.frontend.layout.studio_footer.v1",
-            """
-            {
-                op: PLUGIN_OPERATIONS.Insert,
-                widget: {
-                    id: 'read_theme_cookie',
-                    type: DIRECT_PLUGIN,
-                    priority: 2,
-                    RenderWidget: AddDarkTheme,
-                },
-            },
-        """,
-        ),
-    ]
-)
+        if name == "authoring":
+            PLUGIN_SLOTS.add_items(
+                [
+                    (
+                        "authoring",
+                        "org.openedx.frontend.layout.studio_header_search_button_slot.v1",
+                        HEADER_CONTROLS_PLUGIN,
+                    ),
+                ]
+            )
+            _add_footer("authoring", "org.openedx.frontend.layout.studio_footer.v1")
+            continue
+
+        # Standard Header (catalog, account, profile, learner-dashboard, …)
+        _add_header_controls_slots(name)
+        _add_footer(name)
+
+    return mfes
+
+
+# Local design-token CSS from: cd tels-brand-openedx && npm run serve
+# Use localhost (not 0.0.0.0) — browsers load these URLs.
+#
+# CRITICAL: `default` must be full Paragon theme CSS (layout utilities like
+# .d-flex). `brandOverride` is ONLY our token/CSS layer. Pointing both at
+# localhost:3000 replaces Paragon with brand-only CSS → unstyled MFEs.
+PARAGON_VERSION = "23.14.9"
+PARAGON_CDN = f"https://cdn.jsdelivr.net/npm/@openedx/paragon@{PARAGON_VERSION}/dist"
+LOCAL_BRAND = "http://localhost:3000"
 
 paragon_theme_urls = {
+    "core": {
+        "urls": {
+            "default": f"{PARAGON_CDN}/core.min.css",
+            "brandOverride": f"{LOCAL_BRAND}/core.min.css",
+        },
+    },
+    "defaults": {
+        "light": "light",
+        "dark": "dark",
+    },
     "variants": {
         "light": {
             "urls": {
-                "default": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/ulmo/indigo/dist/light.min.css",
-                "brandOverride": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/ulmo/indigo/dist/light.min.css",
+                "default": f"{PARAGON_CDN}/light.min.css",
+                "brandOverride": f"{LOCAL_BRAND}/light.min.css",
             },
         },
         "dark": {
             "urls": {
-                "default": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/ulmo/indigo/dist/dark.min.css",
-                "brandOverride": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/ulmo/indigo/dist/dark.min.css",
-            }
+                "default": f"{PARAGON_CDN}/dark.min.css",
+                "brandOverride": f"{LOCAL_BRAND}/dark.min.css",
+            },
         },
-    }
+    },
 }
 
 fstring = f"""
@@ -313,31 +425,5 @@ MFE_CONFIG["PARAGON_THEME_URLS"] = {json.dumps(paragon_theme_urls)}
 
 hooks.Filters.ENV_PATCHES.add_item(("mfe-lms-common-settings", fstring))
 
-
-@MFE_APPS.add()  # type: ignore
-def _add_themed_logo(
-    mfes: dict[str, MFE_ATTRS_TYPE],
-) -> dict[str, MFE_ATTRS_TYPE]:
-    for mfe in mfes:
-        PLUGIN_SLOTS.add_item(
-            (
-                str(mfe),
-                "logo_slot",
-                """
-                {
-                    op: PLUGIN_OPERATIONS.Hide,
-                    widgetId: 'default_contents',
-                },
-                {
-                    op: PLUGIN_OPERATIONS.Insert,
-                    widget: {
-                        id: 'custom_logo',
-                        type: DIRECT_PLUGIN,
-                        RenderWidget: ThemedLogo,
-                    }
-                }
-            """,
-            )
-        )
-
-    return mfes
+# NOTE: Do NOT replace logo_slot with ThemedLogo — it breaks header logos that
+# already use MFE_CONFIG LOGO_URL / design-token header styles (tels_brand_image).
