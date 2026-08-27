@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import itertools
 import json
 import os
 import typing as t
@@ -9,7 +8,6 @@ from glob import glob
 import importlib_resources
 from tutor import hooks
 from tutor.__about__ import __version_suffix__
-from tutormfe.hooks import MFE_APPS, MFE_ATTRS_TYPE, PLUGIN_SLOTS
 
 from .__about__ import __version__
 
@@ -107,7 +105,8 @@ hooks.Filters.CONFIG_UNIQUE.add_items(
 hooks.Filters.CONFIG_OVERRIDES.add_items(list(config["overrides"].items()))
 
 
-#  MFEs that are styled using Indigo
+# MFEs that get the Indigo brand package at image build time.
+# Header/footer stay each MFE's native chrome (no PLUGIN_SLOTS overrides).
 indigo_styled_mfes = [
     "learning",
     "learner-dashboard",
@@ -115,6 +114,7 @@ indigo_styled_mfes = [
     "account",
     "discussions",
     "authoring",
+    "catalog",
 ]
 
 for mfe in indigo_styled_mfes:
@@ -136,175 +136,58 @@ hooks.Filters.ENV_PATCHES.add_item(
     )
 )
 
-# Add react components and patches from tutor-indigo
-for path in itertools.chain(
-    glob(
-        os.path.join(str(importlib_resources.files("tutorindigo") / "components"), "*")
-    ),
-    glob(os.path.join(str(importlib_resources.files("tutorindigo") / "patches"), "*")),
+# Settings / asset patches only — no Indigo footer/logo/header widgets.
+for path in glob(
+    os.path.join(str(importlib_resources.files("tutorindigo") / "patches"), "*")
 ):
     with open(path, encoding="utf-8") as patch_file:
         hooks.Filters.ENV_PATCHES.add_item((os.path.basename(path), patch_file.read()))
 
+# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and "deployed".
+# Switch here ↓
+BRAND_THEME_SOURCE = "deployed"  # "development" | "deployed"
 
-for mfe in indigo_styled_mfes:
-    PLUGIN_SLOTS.add_item(
-        (
-            mfe,
-            "org.openedx.frontend.layout.footer.v1",
-            """
-            {
-                op: PLUGIN_OPERATIONS.Hide,
-                widgetId: 'default_contents',
-            },
-            {
-                op: PLUGIN_OPERATIONS.Insert,
-                widget: {
-                    id: 'indigo_footer',
-                    type: DIRECT_PLUGIN,
-                    priority: 1,
-                    RenderWidget: IndigoFooter,
-                },
-            },
-            {
-                op: PLUGIN_OPERATIONS.Insert,
-                widget: {
-                    id: 'read_theme_cookie',
-                    type: DIRECT_PLUGIN,
-                    priority: 2,
-                    RenderWidget: AddDarkTheme,
-                },
-            },
-  """,
-        ),
-    )
-    if mfe != "learning":
-        PLUGIN_SLOTS.add_item(
-            (
-                mfe,
-                "desktop_secondary_menu_slot",
-                """
-                {
-                    op: PLUGIN_OPERATIONS.Insert,
-                    widget: {
-                        id: 'theme_switch_button',
-                        type: DIRECT_PLUGIN,
-                        RenderWidget: ToggleThemeButton,
-                    },
-                },
-        """,
-            )
-        )
-        PLUGIN_SLOTS.add_items(
-            [
-                (
-                    # Hide the default mobile header as it only shows logo
-                    mfe,
-                    "mobile_header_slot",
-                    """
-                {
-                    op: PLUGIN_OPERATIONS.Hide,
-                    widgetId: 'default_contents',
-                }
-                """,
-                ),
-                (
-                    mfe,
-                    "mobile_header_slot",
-                    """
-                {
-                    op: PLUGIN_OPERATIONS.Insert,
-                    widget: {
-                        id: 'theme_switch_button',
-                        type: DIRECT_PLUGIN,
-                        RenderWidget: MobileViewHeader,
-                    },
-                },
-                """,
-                ),
-            ]
-        )
+# `default` = full Paragon CSS; `brandOverride` = TitanEd tokens (+ catalog styles).
+PARAGON_VERSION = "23.14.9"
+PARAGON_CDN = f"https://cdn.jsdelivr.net/npm/@openedx/paragon@{PARAGON_VERSION}/dist"
 
-PLUGIN_SLOTS.add_items(
-    [
-        (
-            # Hide the default Help Link added in plugin slot
-            "learning",
-            "learning_help_slot",
-            """
-        {
-            op: PLUGIN_OPERATIONS.Hide,
-            widgetId: 'default_contents',
-        }
-        """,
-        ),
-        (
-            "learning",
-            "learning_help_slot",
-            """
-        {
-            op: PLUGIN_OPERATIONS.Insert,
-            widget: {
-                id: 'theme_switch_button',
-                type: DIRECT_PLUGIN,
-                RenderWidget: ToggleThemeButton,
-            },
-        },
-        """,
-        ),
-    ]
+BRAND_THEME_DEVELOPMENT = "http://localhost:3000"
+BRAND_THEME_DEPLOYED = (
+    "https://raw.githubusercontent.com/TitanEd/tels-brand-openedx/"
+    "refs/heads/native-tels-brand-openedx/dist"
 )
 
-PLUGIN_SLOTS.add_items(
-    [
-        (
-            "authoring",
-            "org.openedx.frontend.layout.studio_header_search_button_slot.v1",
-            """
-        {
-            op: PLUGIN_OPERATIONS.Insert,
-            widget: {
-                priority: 10,
-                id: 'custom_notification_tray_before',
-                type: DIRECT_PLUGIN,
-                RenderWidget: ToggleThemeButton,
-            },
-        },
-        """,
-        ),
-        (
-            "authoring",
-            "org.openedx.frontend.layout.studio_footer.v1",
-            """
-            {
-                op: PLUGIN_OPERATIONS.Insert,
-                widget: {
-                    id: 'read_theme_cookie',
-                    type: DIRECT_PLUGIN,
-                    priority: 2,
-                    RenderWidget: AddDarkTheme,
-                },
-            },
-        """,
-        ),
-    ]
-)
+BRAND_THEME_BASES = {
+    "development": BRAND_THEME_DEVELOPMENT,
+    "deployed": BRAND_THEME_DEPLOYED,
+}
+BRAND_DIST = BRAND_THEME_BASES[BRAND_THEME_SOURCE].rstrip("/")
 
 paragon_theme_urls = {
+    "core": {
+        "urls": {
+            "default": f"{PARAGON_CDN}/core.min.css",
+            "brandOverride": f"{BRAND_DIST}/core.min.css",
+        },
+    },
+    "defaults": {
+        "light": "light",
+        "dark": "dark",
+    },
     "variants": {
         "light": {
             "urls": {
-                "default": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/ulmo/indigo/dist/light.min.css",
-                "brandOverride": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/ulmo/indigo/dist/light.min.css",
+                "default": f"{PARAGON_CDN}/light.min.css",
+                "brandOverride": f"{BRAND_DIST}/light.min.css",
             },
         },
         "dark": {
             "urls": {
-                "default": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/ulmo/indigo/dist/dark.min.css",
-                "brandOverride": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/ulmo/indigo/dist/dark.min.css",
-            }
+                "default": f"{PARAGON_CDN}/dark.min.css",
+                "brandOverride": f"{BRAND_DIST}/dark.min.css",
+            },
         },
-    }
+    },
 }
 
 fstring = f"""
@@ -312,32 +195,3 @@ MFE_CONFIG["PARAGON_THEME_URLS"] = {json.dumps(paragon_theme_urls)}
 """
 
 hooks.Filters.ENV_PATCHES.add_item(("mfe-lms-common-settings", fstring))
-
-
-@MFE_APPS.add()  # type: ignore
-def _add_themed_logo(
-    mfes: dict[str, MFE_ATTRS_TYPE],
-) -> dict[str, MFE_ATTRS_TYPE]:
-    for mfe in mfes:
-        PLUGIN_SLOTS.add_item(
-            (
-                str(mfe),
-                "logo_slot",
-                """
-                {
-                    op: PLUGIN_OPERATIONS.Hide,
-                    widgetId: 'default_contents',
-                },
-                {
-                    op: PLUGIN_OPERATIONS.Insert,
-                    widget: {
-                        id: 'custom_logo',
-                        type: DIRECT_PLUGIN,
-                        RenderWidget: ThemedLogo,
-                    }
-                }
-            """,
-            )
-        )
-
-    return mfes

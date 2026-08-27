@@ -1,1 +1,1 @@
-{{- patch("Imports.jsx") }}
+{# Native MFE header/footer — no Indigo chrome component imports. #}

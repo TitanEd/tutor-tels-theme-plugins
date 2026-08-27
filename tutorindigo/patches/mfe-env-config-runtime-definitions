@@ -1,4 +1,1 @@
-{{- patch("IndigoFooter.jsx") }}
-{{- patch("MobileViewHeader.jsx") }}
-{{- patch("ThemedLogo.jsx") }}
-{{- patch("ToggleThemeButton.jsx") }}
+{# Native MFE header/footer — no Indigo footer/logo/theme slot widgets. #}

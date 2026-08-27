@@ -1,1 +1,1 @@
-{{- patch("AddDarkTheme.jsx") }}
+{# Native MFE header/footer — no Indigo chrome buildtime widgets. #}
