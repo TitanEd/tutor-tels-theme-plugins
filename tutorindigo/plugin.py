@@ -230,7 +230,7 @@ for mfe in indigo_styled_mfes:
             (
                 f"mfe-dockerfile-post-npm-install-{mfe}",
                 """
-RUN npm install '@edx/brand@github:@edly-io/brand-openedx#indigo-2.6.0'
+RUN npm install '@edx/brand@github:@TitanEd/tels-brand-openedx#native-plus-template-a-tels-brand-openedx'
 RUN npm install {deps}
 """.format(deps=" ".join(f"'{dep}'" for dep in MARKETING_CHROME_NPM_DEPS)),  # noqa: E501
             ),
