@@ -206,7 +206,6 @@ indigo_styled_mfes = [
     "communications",
     "ora-grading",
     "admin-console",
-    "catalog",
     "public",
 ]
 
@@ -277,7 +276,7 @@ FOOTER_PLUGINS = """
             },
 """
 
-# Full Lovable-style marketing header (public / catalog HeaderSlot).
+# Full Lovable-style marketing header (public MFE HeaderSlot).
 TELS_HEADER_PLUGINS = """
             {
                 op: PLUGIN_OPERATIONS.Insert,
@@ -315,7 +314,7 @@ def _add_header_controls_slots(mfe: str) -> None:
         PLUGIN_SLOTS.add_item((mfe, slot, HEADER_CONTROLS_PLUGIN))
 
 
-# LOW priority so catalog/public (added by other Tutor plugins) are present.
+# LOW priority so public (added by other Tutor plugins) is present.
 @MFE_APPS.add(priority=hooks.priorities.LOW)  # type: ignore
 def _add_header_language_and_dark_mode(
     mfes: dict[str, MFE_ATTRS_TYPE],
@@ -324,13 +323,7 @@ def _add_header_language_and_dark_mode(
     for mfe in mfes:
         name = str(mfe)
 
-        # Catalog: TelsHeader via HeaderSlot (PluginSlot host in catalog App).
-        if name == "catalog":
-            _add_tels_header(name)
-            _add_footer(name)
-            continue
-
-        # Public: TelsHeader via HeaderSlot + env.config.jsx (local npm start).
+        # Public: TelsHeader via HeaderSlot (Template A public pages).
         if name == "public":
             _add_tels_header(name)
             _add_footer(name)
@@ -375,28 +368,38 @@ def _add_header_language_and_dark_mode(
             _add_footer("authoring", "org.openedx.frontend.layout.studio_footer.v1")
             continue
 
-        # Standard Header (catalog, account, profile, learner-dashboard, …)
+        # Standard Header (account, profile, learner-dashboard, …)
         _add_header_controls_slots(name)
         _add_footer(name)
 
     return mfes
 
 
-# Local design-token CSS from: cd tels-brand-openedx && npm run serve
-# Use localhost (not 0.0.0.0) — browsers load these URLs.
-#
-# CRITICAL: `default` must be full Paragon theme CSS (layout utilities like
-# .d-flex). `brandOverride` is ONLY our token/CSS layer. Pointing both at
-# localhost:3000 replaces Paragon with brand-only CSS → unstyled MFEs.
+# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and "deployed".
+# Switch here ↓
+BRAND_THEME_SOURCE = "deployed"  # "development" | "deployed"
+
+# `default` = full Paragon CSS; `brandOverride` = TitanEd tokens (Template A / public).
 PARAGON_VERSION = "23.14.9"
 PARAGON_CDN = f"https://cdn.jsdelivr.net/npm/@openedx/paragon@{PARAGON_VERSION}/dist"
-LOCAL_BRAND = "http://localhost:3000"
+
+BRAND_THEME_DEVELOPMENT = "http://localhost:3000"
+BRAND_THEME_DEPLOYED = (
+    "https://raw.githubusercontent.com/TitanEd/tels-brand-openedx/"
+    "refs/heads/native-plus-template-a-tels-brand-openedx/dist"
+)
+
+BRAND_THEME_BASES = {
+    "development": BRAND_THEME_DEVELOPMENT,
+    "deployed": BRAND_THEME_DEPLOYED,
+}
+BRAND_DIST = BRAND_THEME_BASES[BRAND_THEME_SOURCE].rstrip("/")
 
 paragon_theme_urls = {
     "core": {
         "urls": {
             "default": f"{PARAGON_CDN}/core.min.css",
-            "brandOverride": f"{LOCAL_BRAND}/core.min.css",
+            "brandOverride": f"{BRAND_DIST}/core.min.css",
         },
     },
     "defaults": {
@@ -407,13 +410,13 @@ paragon_theme_urls = {
         "light": {
             "urls": {
                 "default": f"{PARAGON_CDN}/light.min.css",
-                "brandOverride": f"{LOCAL_BRAND}/light.min.css",
+                "brandOverride": f"{BRAND_DIST}/light.min.css",
             },
         },
         "dark": {
             "urls": {
                 "default": f"{PARAGON_CDN}/dark.min.css",
-                "brandOverride": f"{LOCAL_BRAND}/dark.min.css",
+                "brandOverride": f"{BRAND_DIST}/dark.min.css",
             },
         },
     },
