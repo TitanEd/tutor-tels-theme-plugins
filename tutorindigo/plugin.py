@@ -107,6 +107,18 @@ hooks.Filters.CONFIG_OVERRIDES.add_items(list(config["overrides"].items()))
 
 # MFEs that get the Indigo brand package at image build time.
 # Header/footer stay each MFE's native chrome (no PLUGIN_SLOTS overrides).
+#
+# Every MFE already inherits the TitanEd design tokens (colors, typography,
+# spacing, buttons, forms, links, dropdowns, shared header/footer chrome) at
+# runtime via MFE_CONFIG["PARAGON_THEME_URLS"] below, which is NOT scoped to
+# this list -- it applies to every MFE unconditionally. What this list
+# actually controls is narrower: which MFEs get the '@edx/brand' fork
+# installed at Docker build time, which is what supplies the TitanEd
+# logo/favicon/self-hosted font assets baked into that MFE's bundle. Without
+# being in this list, an MFE still renders with TitanEd colors/spacing/buttons,
+# but shows the stock Open edX logo in its header.
+#
+# Public / learner-facing MFEs:
 indigo_styled_mfes = [
     "learning",
     "learner-dashboard",
@@ -115,6 +127,16 @@ indigo_styled_mfes = [
     "discussions",
     "authoring",
     "catalog",
+    # Staff-only / internal MFEs (not learner-facing, but must still match the
+    # brand -- these reuse the exact same shared header/footer components as
+    # the public MFEs above, e.g. Communications + ORA Grading render
+    # `LearningHeader`/`Header` with `.learning-header`, and Admin Console
+    # renders `StudioHeader` -- all already styled generically in
+    # tels-brand-openedx/paragon/_header.scss + _footer.scss):
+    "gradebook",
+    "ora-grading",
+    "communications",
+    "admin-console",
 ]
 
 for mfe in indigo_styled_mfes:

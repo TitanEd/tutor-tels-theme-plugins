@@ -40,6 +40,16 @@ Or, to set the primary color to forest green, run::
     # Note: The nested quotes are needed in order to handle the hash (#) correctly.
     tutor config save --set 'INDIGO_PRIMARY_COLOR="#225522"'
 
+Branded MFEs
+------------
+
+The TitanEd design tokens (colors, typography, spacing, buttons, forms, links, dropdowns, and shared header/footer chrome from `tels-brand-openedx <https://github.com/TitanEd/tels-brand-openedx>`__) apply to every MFE at runtime, regardless of this list. What ``indigo_styled_mfes`` in ``tutorindigo/plugin.py`` controls is narrower: which MFEs get the TitanEd ``@edx/brand`` fork installed at Docker build time, i.e. which MFEs show the TitanEd logo/favicon instead of the stock Open edX one. Currently::
+
+    learning, learner-dashboard, profile, account, discussions, authoring, catalog,
+    gradebook, ora-grading, communications, admin-console
+
+The last four (Gradebook, ORA Grading, Communications, Admin Console) are staff-only/internal tools, not learner-facing — they're included so the brand is consistent everywhere staff work, not just on public pages. Header/footer stay each MFE's native chrome for all of them (no ``PLUGIN_SLOTS`` overrides).
+
 Theme Toggle Button
 -------------------
 
