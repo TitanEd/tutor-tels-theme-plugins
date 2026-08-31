@@ -9,7 +9,7 @@ from glob import glob
 import importlib_resources
 from tutor import hooks
 from tutor.__about__ import __version_suffix__
-from tutormfe.hooks import MFE_APPS, MFE_ATTRS_TYPE, PLUGIN_SLOTS
+from tutormfe.hooks import PLUGIN_SLOTS
 
 from .__about__ import __version__
 
@@ -95,13 +95,14 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
                 "url": "https://titaned.com/",
             },
         ],
-        # Marketing header (TelsHeader) + footer (IndigoFooter) — URLs
+        # Marketing header (native @edx/frontend-component-header, see
+        # HEADER_STYLED_MFES below) + footer (IndigoFooter) — URLs
         # overridable via tutor config. Default to the public MFE's own route
         # (Tutor's default MFE routing serves the "public" app at
         # ${MFE_HOST}/public, not the site root) so these work both from the
-        # public MFE itself and from every other MFE's header/footer linking
-        # back to it. Override HOME_URL if your deployment mounts the public
-        # MFE somewhere else, e.g.:
+        # public MFE itself and from every other MFE's footer linking back to
+        # it. Override HOME_URL if your deployment mounts the public MFE
+        # somewhere else, e.g.:
         #   tutor config save --set 'INDIGO_HOME_URL="https://learn.example.com"'
         # COURSES_URL: public MFE /public/courses (search submits here with ?q=).
         # LEARNER_DASHBOARD_URL is usually set by Tutor MFE; override if needed.
@@ -111,19 +112,6 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         "CONTACT_URL": "/public/contact",
         "PRIVACY_URL": "/public/privacy",
         "TERMS_URL": "/public/terms",
-        "HEADER_GUEST_NAV": [
-            {"titleKey": "home", "urlKey": "home"},
-            {"titleKey": "courses", "urlKey": "courses"},
-            {"titleKey": "about", "urlKey": "about"},
-            {"titleKey": "contact", "urlKey": "contact"},
-        ],
-        "HEADER_AUTH_NAV": [
-            {"titleKey": "home", "urlKey": "home"},
-            {"titleKey": "dashboard", "urlKey": "dashboard"},
-            {"titleKey": "courses", "urlKey": "courses"},
-            {"titleKey": "about", "urlKey": "about"},
-            {"titleKey": "contact", "urlKey": "contact"},
-        ],
     },
     "unique": {},
     "overrides": {},
@@ -209,33 +197,57 @@ indigo_styled_mfes = [
     "public",
 ]
 
-# env.config.jsx (Imports.jsx patch) is baked into EVERY styled MFE's image
-# and unconditionally imports these packages for the shared TelsHeader /
-# IndigoFooter / HeaderControls / LanguageMenu bundle. Not every upstream MFE
-# repo declares them (e.g. authoring, discussions, gradebook, learning have
-# none of these in package.json), so `npm run build` fails with
-# "Module not found" for those apps and the whole `tutor images build mfe`
-# aborts. Install them explicitly for every MFE that gets the shared bundle,
-# regardless of what its own package.json already has.
-MARKETING_CHROME_NPM_DEPS = [
-    "@fortawesome/react-fontawesome@^0.2.6",
-    "@fortawesome/free-brands-svg-icons@^6.7.2",
-    "@fortawesome/free-solid-svg-icons@^6.7.2",
-    "universal-cookie@^7.2.2",
-]
-
 for mfe in indigo_styled_mfes:
     hooks.Filters.ENV_PATCHES.add_items(
         [
             (
                 f"mfe-dockerfile-post-npm-install-{mfe}",
-                """
-RUN npm install '@edx/brand@github:@TitanEd/tels-brand-openedx#native-plus-template-a-tels-brand-openedx'
-RUN npm install {deps}
-""".format(deps=" ".join(f"'{dep}'" for dep in MARKETING_CHROME_NPM_DEPS)),  # noqa: E501
+                "RUN npm install '@edx/brand@github:@TitanEd/tels-brand-openedx#native-plus-template-a-tels-brand-openedx'",  # noqa: E501
             ),
         ]
     )
+
+# Include js file in lms main.html, main_django.html, and certificate.html
+
+hooks.Filters.ENV_PATCHES.add_items(
+    [
+        # for production
+        (
+            "openedx-common-assets-settings",
+            """
+javascript_files = ['base_application', 'application', 'certificates_wv']
+dark_theme_filepath = ['indigo/js/dark-theme.js']
+
+for filename in javascript_files:
+    if filename in PIPELINE['JAVASCRIPT']:
+        PIPELINE['JAVASCRIPT'][filename]['source_filenames'] += dark_theme_filepath
+""",
+        ),
+        # for development
+        (
+            "openedx-lms-development-settings",
+            """
+javascript_files = ['base_application', 'application', 'certificates_wv']
+dark_theme_filepath = ['indigo/js/dark-theme.js']
+
+for filename in javascript_files:
+    if filename in PIPELINE['JAVASCRIPT']:
+        PIPELINE['JAVASCRIPT'][filename]['source_filenames'] += dark_theme_filepath
+
+MFE_CONFIG['INDIGO_ENABLE_DARK_TOGGLE'] = {{ INDIGO_ENABLE_DARK_TOGGLE }}
+MFE_CONFIG['INDIGO_FOOTER_NAV_LINKS'] = {{ INDIGO_FOOTER_NAV_LINKS }}
+""",
+        ),
+        (
+            "openedx-lms-production-settings",
+            """
+MFE_CONFIG['INDIGO_ENABLE_DARK_TOGGLE'] = {{ INDIGO_ENABLE_DARK_TOGGLE }}
+MFE_CONFIG['INDIGO_FOOTER_NAV_LINKS'] = {{ INDIGO_FOOTER_NAV_LINKS }}
+""",
+        ),
+    ]
+)
+
 
 # Add react components and patches from tutor-indigo
 for path in itertools.chain(
@@ -248,17 +260,51 @@ for path in itertools.chain(
         hooks.Filters.ENV_PATCHES.add_item((os.path.basename(path), patch_file.read()))
 
 
-HEADER_CONTROLS_PLUGIN = """
-            {
-                op: PLUGIN_OPERATIONS.Insert,
-                widget: {
-                    id: 'indigo_header_controls',
-                    type: DIRECT_PLUGIN,
-                    priority: 1,
-                    RenderWidget: HeaderControls,
-                },
-            },
-"""
+# ---------------------------------------------------------------------------
+# Header + footer overrides — same method as the reference tutor-indigo
+# theme plugin (VigyanShaala-Tech/tutor-vigyanshaala-theme-plugin, `release`
+# branch): target the PluginSlots that @edx/frontend-component-header and
+# @edx/frontend-component-footer render *inside their own components*
+# (header_desktop_user_menu_toggle.v1, header_desktop_user_menu.v1,
+# header_mobile_user_menu.v1, footer.v1), instead of hiding/replacing the
+# app-level "org.openedx.frontend.layout.header.v1" wrapper slot.
+#
+# This is deliberately simpler than swapping in a fully custom header
+# component: those inner slots exist as soon as an app renders <Header /> /
+# <LearningHeader /> / <FooterSlot />, whether or not that app's own source
+# wraps them in an outer PluginSlot — so no per-MFE source-file patching is
+# needed, for any MFE, regardless of its @edx/frontend-component-header
+# version. The Language dropdown and dark-mode toggle are simply not part of
+# this override, so they no longer render in the header at all.
+#
+# What's still native (untouched) per this method: logo, primary nav links,
+# and the header's own responsive desktop/mobile breakpoint — "header
+# material" stays whatever the brand package / native header already
+# provides. Only the user-menu toggle (avatar + name) and the user-menu
+# dropdown contents (Dashboard/Profile/Account/[Control Hub/Studio for
+# admins]/Sign out) are replaced, via CustomHeaderUserMenuDropdown.jsx and
+# CustomHeaderUserMenuItem.jsx.
+# ---------------------------------------------------------------------------
+
+# MFEs that ship @edx/frontend-component-header/@edx/frontend-component-footer
+# and get this override — same list as the reference plugin. authn/authoring/
+# admin-console are excluded — none of them ship the header package, so these
+# PluginSlots don't exist there (authn/authoring still get the brand package
+# via indigo_styled_mfes above). Any MFE whose deployed
+# @edx/frontend-component-header build predates these PluginSlots simply
+# won't render the override — same "apply everywhere, no per-MFE special
+# casing" approach as the reference plugin.
+HEADER_STYLED_MFES = [
+    "learning",
+    "learner-dashboard",
+    "profile",
+    "account",
+    "discussions",
+    "communications",
+    "gradebook",
+    "ora-grading",
+    "public",
+]
 
 FOOTER_PLUGINS = """
             {
@@ -274,19 +320,47 @@ FOOTER_PLUGINS = """
                     RenderWidget: IndigoFooter,
                 },
             },
-"""
-
-# Full Lovable-style marketing header (public MFE HeaderSlot).
-TELS_HEADER_PLUGINS = """
             {
                 op: PLUGIN_OPERATIONS.Insert,
                 widget: {
-                    id: 'tels_header',
+                    id: 'read_theme_cookie',
                     type: DIRECT_PLUGIN,
-                    priority: 1,
-                    RenderWidget: TelsHeader,
+                    priority: 2,
+                    RenderWidget: AddDarkTheme,
                 },
             },
+"""
+
+USER_MENU_TOGGLE_PLUGIN = """
+            {
+                op: PLUGIN_OPERATIONS.Hide,
+                widgetId: 'default_contents',
+            },
+            {
+                op: PLUGIN_OPERATIONS.Insert,
+                widget: {
+                    id: 'custom_desktop_user_menu_toggle_avatar',
+                    type: DIRECT_PLUGIN,
+                    RenderWidget: DesktopUserMenuToggleAvatar,
+                },
+            },
+"""
+
+
+def _user_menu_items_plugin(widget_id: str) -> str:
+    return f"""
+            {{
+                op: PLUGIN_OPERATIONS.Hide,
+                widgetId: 'default_contents',
+            }},
+            {{
+                op: PLUGIN_OPERATIONS.Insert,
+                widget: {{
+                    id: '{widget_id}',
+                    type: DIRECT_PLUGIN,
+                    RenderWidget: CustomHeaderUserMenuItem,
+                }},
+            }},
 """
 
 
@@ -294,90 +368,66 @@ def _add_footer(mfe: str, slot: str = "org.openedx.frontend.layout.footer.v1") -
     PLUGIN_SLOTS.add_item((mfe, slot, FOOTER_PLUGINS))
 
 
-def _add_tels_header(mfe: str, slot: str = "org.openedx.frontend.layout.header.v1") -> None:
-    PLUGIN_SLOTS.add_item((mfe, slot, TELS_HEADER_PLUGINS))
+def _add_user_menu_slots(mfe: str) -> None:
+    """Avatar/name toggle + admin-aware dropdown contents, desktop & mobile."""
+    PLUGIN_SLOTS.add_item(
+        (
+            mfe,
+            "org.openedx.frontend.layout.header_desktop_user_menu_toggle.v1",
+            USER_MENU_TOGGLE_PLUGIN,
+        )
+    )
+    PLUGIN_SLOTS.add_item(
+        (
+            mfe,
+            "org.openedx.frontend.layout.header_desktop_user_menu.v1",
+            _user_menu_items_plugin("custom_desktop_user_menu_component"),
+        )
+    )
+    PLUGIN_SLOTS.add_item(
+        (
+            mfe,
+            "org.openedx.frontend.layout.header_mobile_user_menu.v1",
+            _user_menu_items_plugin("custom_mobile_user_menu_component"),
+        )
+    )
 
 
-def _add_header_controls_slots(mfe: str) -> None:
-    """
-    Language + dark-mode in header for logged-in AND logged-out users.
+for mfe in HEADER_STYLED_MFES:
+    _add_footer(mfe)
+    _add_user_menu_slots(mfe)
 
-    Desktop secondary menu is only rendered when logged in, so also inject into
-    the logged-out items slot. Same idea for mobile.
-    """
-    for slot in (
-        "desktop_secondary_menu_slot",
-        "desktop_logged_out_items_slot",
-        "mobile_logged_out_items_slot",
-        "org.openedx.frontend.layout.header_mobile_user_menu_trigger.v1",
-    ):
-        PLUGIN_SLOTS.add_item((mfe, slot, HEADER_CONTROLS_PLUGIN))
+# authoring (Studio) has its own header, unrelated to
+# @edx/frontend-component-header — only its footer slot is shared.
+_add_footer("authoring", "org.openedx.frontend.layout.studio_footer.v1")
 
-
-# LOW priority so public (added by other Tutor plugins) is present.
-@MFE_APPS.add(priority=hooks.priorities.LOW)  # type: ignore
-def _add_header_language_and_dark_mode(
-    mfes: dict[str, MFE_ATTRS_TYPE],
-) -> dict[str, MFE_ATTRS_TYPE]:
-    """Attach language dropdown + dark-mode switch to every registered MFE."""
-    for mfe in mfes:
-        name = str(mfe)
-
-        # Public: TelsHeader via HeaderSlot (Template A public pages).
-        if name == "public":
-            _add_tels_header(name)
-            _add_footer(name)
-            continue
-
-        # LearningHeader MFEs (learning + discussions) use learning_* slots,
-        # not desktop_secondary_menu_slot from the standard site header.
-        if name in ("learning", "discussions"):
-            PLUGIN_SLOTS.add_items(
-                [
-                    (
-                        name,
-                        "learning_help_slot",
-                        """
-        {
-            op: PLUGIN_OPERATIONS.Hide,
-            widgetId: 'default_contents',
-        },
-"""
-                        + HEADER_CONTROLS_PLUGIN,
-                    ),
-                    (
-                        name,
-                        "learning_logged_out_items_slot",
-                        HEADER_CONTROLS_PLUGIN,
-                    ),
-                ]
-            )
-            _add_footer(name)
-            continue
-
-        if name == "authoring":
-            PLUGIN_SLOTS.add_items(
-                [
-                    (
-                        "authoring",
-                        "org.openedx.frontend.layout.studio_header_search_button_slot.v1",
-                        HEADER_CONTROLS_PLUGIN,
-                    ),
-                ]
-            )
-            _add_footer("authoring", "org.openedx.frontend.layout.studio_footer.v1")
-            continue
-
-        # Standard Header (account, profile, learner-dashboard, …)
-        _add_header_controls_slots(name)
-        _add_footer(name)
-
-    return mfes
+# profile ships @edx/frontend-component-header v6, which has no
+# DesktopUserMenuToggleSlot for the avatar/name swap above. Use
+# header_desktop.v1 / header_mobile.v1 (both support mergeProps) instead, to
+# override the username/avatar props on the native toggle with the user's
+# full display name and photo.
+for slot in [
+    "org.openedx.frontend.layout.header_desktop.v1",
+    "org.openedx.frontend.layout.header_mobile.v1",
+]:
+    PLUGIN_SLOTS.add_item(
+        (
+            "profile",
+            slot,
+            """
+            {
+                op: PLUGIN_OPERATIONS.Modify,
+                widgetId: 'default_contents',
+                fn: modifyHeaderUsername,
+            },
+        """,
+        )
+    )
 
 
 # TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and "deployed".
 # Switch here ↓
-BRAND_THEME_SOURCE = "deployed"  # "development" | "deployed"
+BRAND_THEME_SOURCE = "development"  # "development" | "deployed"
 
 # `default` = full Paragon CSS; `brandOverride` = TitanEd tokens (Template A / public).
 PARAGON_VERSION = "23.14.9"

@@ -5,7 +5,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { getConfig } from '@edx/frontend-platform';
 import { AppContext } from '@edx/frontend-platform/react';
 import { Icon } from '@openedx/paragon';
-import { Nightlight, WbSunny } from '@openedx/paragon/icons';
+import { AccountCircle, Nightlight, WbSunny } from '@openedx/paragon/icons';
 import { defineMessages, useIntl } from '@edx/frontend-platform/i18n';
 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';

@@ -5,8 +5,14 @@
  * Same behavior as mfes/frontend-app-public/src/tels-chrome/TelsHeader.jsx.
  * Logged out: Home | Courses | About Us | Contact + Sign In / Register
  * Logged in:  Home | Dashboard | Courses | About Us | Contact + user menu
- * Styles: tels-brand-openedx .tels-header* / .tels-btn* (tokens only).
+ * Styles: tels-brand-openedx .custom-header* / .tels-btn* (tokens only).
  * Copy: defineMessages + useIntl (same ids as public MFE messages.js).
+ *
+ * Not currently wired into any MFE — see CustomHeaderUserMenuDropdown.jsx /
+ * CustomHeaderUserMenuItem.jsx for the native-header override that replaced
+ * this full-header swap (org.openedx.frontend.layout.header_desktop_user_menu*
+ * PluginSlots, same method as the reference tutor-indigo theme plugin).
+ * Left here, unwired, in case a fully custom header is wanted again later.
  */
 
 const DEFAULT_GUEST_NAV = [
@@ -24,7 +30,7 @@ const DEFAULT_AUTH_NAV = [
   { titleKey: 'contact', urlKey: 'contact' },
 ];
 
-const telsHeaderMessages = defineMessages({
+const customHeaderMessages = defineMessages({
   homeAria: {
     id: 'tels.header.logo.aria',
     defaultMessage: '{siteName} Home',
@@ -97,7 +103,7 @@ const telsHeaderMessages = defineMessages({
   },
 });
 
-const TelsHeader = () => {
+const CustomHeader = () => {
   const intl = useIntl();
   const config = getConfig();
   const { authenticatedUser } = useContext(AppContext);
@@ -135,8 +141,8 @@ const TelsHeader = () => {
   }, []);
 
   const labelFor = (titleKey) => {
-    if (titleKey in telsHeaderMessages) {
-      return intl.formatMessage(telsHeaderMessages[titleKey]);
+    if (titleKey in customHeaderMessages) {
+      return intl.formatMessage(customHeaderMessages[titleKey]);
     }
     return titleKey;
   };
@@ -155,7 +161,7 @@ const TelsHeader = () => {
   const renderNavItemLink = (item, { onClick, className, key } = {}) => {
     const href = hrefFor(item);
     const label = labelFor(item.titleKey);
-    const navClass = ['tels-header__nav-link', className].filter(Boolean).join(' ');
+    const navClass = ['custom-header__nav-link', className].filter(Boolean).join(' ');
     const active = isPublicMfe
       ? isPublicMfeNavActive(item.urlKey, location.pathname)
       : window.location.pathname.replace(/\/$/, '') === String(href).replace(/\/$/, '');
@@ -175,61 +181,61 @@ const TelsHeader = () => {
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <header className="tels-header">
+    <header className="custom-header">
       <div className="tels-container">
-        <div className="tels-header__row">
+        <div className="custom-header__row">
           <a
             href={homeUrl}
-            className="tels-header__logo"
-            aria-label={intl.formatMessage(telsHeaderMessages.homeAria, { siteName })}
+            className="custom-header__logo"
+            aria-label={intl.formatMessage(customHeaderMessages.homeAria, { siteName })}
           >
             <img src={logoUrl} alt={siteName} />
           </a>
 
-          <nav className="tels-header__nav" aria-label={intl.formatMessage(telsHeaderMessages.primaryNav)}>
+          <nav className="custom-header__nav" aria-label={intl.formatMessage(customHeaderMessages.primaryNav)}>
             {navItems.map((item) => renderNavItemLink(item, {
               key: `${item.titleKey}-${item.urlKey}`,
             }))}
           </nav>
 
-          <div className="tels-header__actions">
+          <div className="custom-header__actions">
             {authenticatedUser ? (
-              <div className="tels-header__user" ref={userMenuRef}>
+              <div className="custom-header__user" ref={userMenuRef}>
                 <button
                   type="button"
-                  className="tels-header__user-toggle"
-                  aria-label={intl.formatMessage(telsHeaderMessages.userMenu)}
+                  className="custom-header__user-toggle"
+                  aria-label={intl.formatMessage(customHeaderMessages.userMenu)}
                   aria-expanded={userMenuOpen}
                   onClick={() => setUserMenuOpen((open) => !open)}
                 >
-                  <span className="tels-header__user-name">
+                  <span className="custom-header__user-name">
                     {authenticatedUser.name || authenticatedUser.username}
                   </span>
                   <FontAwesomeIcon icon={faChevronDown} aria-hidden="true" />
                 </button>
                 {userMenuOpen && (
-                  <ul className="tels-header__user-menu">
+                  <ul className="custom-header__user-menu">
                     {profileUrl && (
                       <li>
                         <a href={profileUrl} onClick={() => setUserMenuOpen(false)}>
-                          {intl.formatMessage(telsHeaderMessages.profile)}
+                          {intl.formatMessage(customHeaderMessages.profile)}
                         </a>
                       </li>
                     )}
                     {accountUrl && (
                       <li>
                         <a href={accountUrl} onClick={() => setUserMenuOpen(false)}>
-                          {intl.formatMessage(telsHeaderMessages.account)}
+                          {intl.formatMessage(customHeaderMessages.account)}
                         </a>
                       </li>
                     )}
                     <li>
                       <a href={dashboardUrl} onClick={() => setUserMenuOpen(false)}>
-                        {intl.formatMessage(telsHeaderMessages.dashboard)}
+                        {intl.formatMessage(customHeaderMessages.dashboard)}
                       </a>
                     </li>
                     <li>
-                      <a href={logoutUrl}>{intl.formatMessage(telsHeaderMessages.logout)}</a>
+                      <a href={logoutUrl}>{intl.formatMessage(customHeaderMessages.logout)}</a>
                     </li>
                   </ul>
                 )}
@@ -237,10 +243,10 @@ const TelsHeader = () => {
             ) : (
               <>
                 <a href={loginUrl} className="tels-btn tels-btn--ghost tels-btn--sm">
-                  {intl.formatMessage(telsHeaderMessages.signIn)}
+                  {intl.formatMessage(customHeaderMessages.signIn)}
                 </a>
                 <a href={registerUrl} className="tels-btn tels-btn--primary tels-btn--sm">
-                  {intl.formatMessage(telsHeaderMessages.register)}
+                  {intl.formatMessage(customHeaderMessages.register)}
                 </a>
               </>
             )}
@@ -248,8 +254,8 @@ const TelsHeader = () => {
 
           <button
             type="button"
-            className="tels-header__mobile"
-            aria-label={intl.formatMessage(telsHeaderMessages.menu)}
+            className="custom-header__mobile"
+            aria-label={intl.formatMessage(customHeaderMessages.menu)}
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((open) => !open)}
           >
@@ -259,7 +265,7 @@ const TelsHeader = () => {
       </div>
 
       {mobileOpen && (
-        <div className="tels-header__mobile-panel">
+        <div className="custom-header__mobile-panel">
           {navItems.map((item) => renderNavItemLink(item, {
             key: `mobile-${item.titleKey}-${item.urlKey}`,
             onClick: closeMobile,
@@ -268,16 +274,16 @@ const TelsHeader = () => {
             <>
               {profileUrl && (
                 <a href={profileUrl} onClick={closeMobile}>
-                  {intl.formatMessage(telsHeaderMessages.profile)}
+                  {intl.formatMessage(customHeaderMessages.profile)}
                 </a>
               )}
               {accountUrl && (
                 <a href={accountUrl} onClick={closeMobile}>
-                  {intl.formatMessage(telsHeaderMessages.account)}
+                  {intl.formatMessage(customHeaderMessages.account)}
                 </a>
               )}
               <a href={logoutUrl} onClick={closeMobile}>
-                {intl.formatMessage(telsHeaderMessages.logout)}
+                {intl.formatMessage(customHeaderMessages.logout)}
               </a>
             </>
           ) : (
@@ -287,14 +293,14 @@ const TelsHeader = () => {
                 className="tels-btn tels-btn--ghost tels-btn--sm"
                 onClick={closeMobile}
               >
-                {intl.formatMessage(telsHeaderMessages.signIn)}
+                {intl.formatMessage(customHeaderMessages.signIn)}
               </a>
               <a
                 href={registerUrl}
                 className="tels-btn tels-btn--primary tels-btn--sm"
                 onClick={closeMobile}
               >
-                {intl.formatMessage(telsHeaderMessages.register)}
+                {intl.formatMessage(customHeaderMessages.register)}
               </a>
             </>
           )}
