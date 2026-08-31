@@ -1,6 +1,4 @@
 {{- patch("publicUrls.js") }}
 {{- patch("IndigoFooter.jsx") }}
-{{- patch("ToggleThemeButton.jsx") }}
-{{- patch("LanguageMenu.jsx") }}
-{{- patch("HeaderControls.jsx") }}
-{{- patch("TelsHeader.jsx") }}
+{{- patch("CustomHeaderUserMenuDropdown.jsx") }}
+{{- patch("CustomHeaderUserMenuItem.jsx") }}
