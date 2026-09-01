@@ -1,4 +1,3 @@
 {{- patch("publicUrls.js") }}
 {{- patch("IndigoFooter.jsx") }}
-{{- patch("CustomHeaderUserMenuDropdown.jsx") }}
-{{- patch("CustomHeaderUserMenuItem.jsx") }}
+{{- patch("CustomHeader.jsx") }}

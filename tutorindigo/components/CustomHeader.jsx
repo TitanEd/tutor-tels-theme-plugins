@@ -1,18 +1,13 @@
 /**
- * Shared marketing header for MFEs that mount HeaderSlot
- * (PLUGIN_SLOTS → org.openedx.frontend.layout.header.v1).
+ * Shared marketing header (PLUGIN_SLOTS widget id: custom_header /
+ * custom_header_desktop / custom_header_mobile). Slot *ids* differ by MFE —
+ * see HEADER_REPLACEMENT_SLOTS in plugin.py. Do not reuse one slot id across
+ * header families (public header.v1 vs desktop vs learning).
  *
- * Same behavior as mfes/frontend-app-public/src/tels-chrome/TelsHeader.jsx.
  * Logged out: Home | Courses | About Us | Contact + Sign In / Register
  * Logged in:  Home | Dashboard | Courses | About Us | Contact + user menu
  * Styles: tels-brand-openedx .custom-header* / .tels-btn* (tokens only).
  * Copy: defineMessages + useIntl (same ids as public MFE messages.js).
- *
- * Not currently wired into any MFE — see CustomHeaderUserMenuDropdown.jsx /
- * CustomHeaderUserMenuItem.jsx for the native-header override that replaced
- * this full-header swap (org.openedx.frontend.layout.header_desktop_user_menu*
- * PluginSlots, same method as the reference tutor-indigo theme plugin).
- * Left here, unwired, in case a fully custom header is wanted again later.
  */
 
 const DEFAULT_GUEST_NAV = [
@@ -96,6 +91,16 @@ const customHeaderMessages = defineMessages({
     defaultMessage: 'Account',
     description: 'User dropdown Account settings link',
   },
+  controlHub: {
+    id: 'account.user.menu.control.hub',
+    defaultMessage: 'Control Hub',
+    description: 'Control Hub link label in the user menu (admin only)',
+  },
+  studio: {
+    id: 'account.user.menu.studio',
+    defaultMessage: 'Studio',
+    description: 'Studio link label in the user menu (admin only)',
+  },
   logout: {
     id: 'tels.header.user.logout',
     defaultMessage: 'Sign Out',
@@ -124,11 +129,47 @@ const CustomHeader = () => {
     ? `${config.ACCOUNT_PROFILE_URL}/u/${authenticatedUser.username}`
     : null;
   const accountUrl = config.ACCOUNT_SETTINGS_URL;
+  const studioUrl = config.STUDIO_BASE_URL;
+  const controlHubUrl = `${config.LMS_BASE_URL}/control-hub`;
+  const canSeePrivilegedItems = authenticatedUser?.administrator === true;
   const isPublicMfe = process.env.APP_ID === 'public';
   const guestNav = config.INDIGO_HEADER_GUEST_NAV || DEFAULT_GUEST_NAV;
   const authNav = config.INDIGO_HEADER_AUTH_NAV || DEFAULT_AUTH_NAV;
   const navItems = authenticatedUser ? authNav : guestNav;
   const location = useLocation();
+
+  const userMenuLinks = authenticatedUser ? [
+    profileUrl && {
+      key: 'profile',
+      href: profileUrl,
+      message: customHeaderMessages.profile,
+    },
+    accountUrl && {
+      key: 'account',
+      href: accountUrl,
+      message: customHeaderMessages.account,
+    },
+    {
+      key: 'dashboard',
+      href: dashboardUrl,
+      message: customHeaderMessages.dashboard,
+    },
+    canSeePrivilegedItems && {
+      key: 'control-hub',
+      href: controlHubUrl,
+      message: customHeaderMessages.controlHub,
+    },
+    canSeePrivilegedItems && studioUrl && {
+      key: 'studio',
+      href: studioUrl,
+      message: customHeaderMessages.studio,
+    },
+    {
+      key: 'logout',
+      href: logoutUrl,
+      message: customHeaderMessages.logout,
+    },
+  ].filter(Boolean) : [];
 
   useEffect(() => {
     const onDocClick = (event) => {
@@ -179,6 +220,7 @@ const CustomHeader = () => {
   };
 
   const closeMobile = () => setMobileOpen(false);
+  const closeUserMenu = () => setUserMenuOpen(false);
 
   return (
     <header className="custom-header">
@@ -215,28 +257,13 @@ const CustomHeader = () => {
                 </button>
                 {userMenuOpen && (
                   <ul className="custom-header__user-menu">
-                    {profileUrl && (
-                      <li>
-                        <a href={profileUrl} onClick={() => setUserMenuOpen(false)}>
-                          {intl.formatMessage(customHeaderMessages.profile)}
+                    {userMenuLinks.map((item) => (
+                      <li key={item.key}>
+                        <a href={item.href} onClick={closeUserMenu}>
+                          {intl.formatMessage(item.message)}
                         </a>
                       </li>
-                    )}
-                    {accountUrl && (
-                      <li>
-                        <a href={accountUrl} onClick={() => setUserMenuOpen(false)}>
-                          {intl.formatMessage(customHeaderMessages.account)}
-                        </a>
-                      </li>
-                    )}
-                    <li>
-                      <a href={dashboardUrl} onClick={() => setUserMenuOpen(false)}>
-                        {intl.formatMessage(customHeaderMessages.dashboard)}
-                      </a>
-                    </li>
-                    <li>
-                      <a href={logoutUrl}>{intl.formatMessage(customHeaderMessages.logout)}</a>
-                    </li>
+                    ))}
                   </ul>
                 )}
               </div>
@@ -271,21 +298,11 @@ const CustomHeader = () => {
             onClick: closeMobile,
           }))}
           {authenticatedUser ? (
-            <>
-              {profileUrl && (
-                <a href={profileUrl} onClick={closeMobile}>
-                  {intl.formatMessage(customHeaderMessages.profile)}
-                </a>
-              )}
-              {accountUrl && (
-                <a href={accountUrl} onClick={closeMobile}>
-                  {intl.formatMessage(customHeaderMessages.account)}
-                </a>
-              )}
-              <a href={logoutUrl} onClick={closeMobile}>
-                {intl.formatMessage(customHeaderMessages.logout)}
+            userMenuLinks.map((item) => (
+              <a key={`mobile-${item.key}`} href={item.href} onClick={closeMobile}>
+                {intl.formatMessage(item.message)}
               </a>
-            </>
+            ))
           ) : (
             <>
               <a
