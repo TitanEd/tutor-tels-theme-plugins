@@ -36,6 +36,32 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
             {"title": "Help", "url": "/help"},
             {"title": "Contact Us", "url": "/contact"},
         ],
+        # CONTROL_PANEL_INSTALL_FROM_GIT: set to true ONLY on environments
+        # that don't already have control-panel mounted from local disk --
+        # i.e. UAT/prod, never local dev:
+        #   tutor config save --set INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT=true
+        "CONTROL_PANEL_INSTALL_FROM_GIT": False,
+        # CONTROL_PANEL_REPO_REF: which branch/tag/commit of control-panel
+        # to install. Override per environment, e.g.
+        #   tutor config save --set INDIGO_CONTROL_PANEL_REPO_REF=uat
+        # Defaults to "main" -- change this if that isn't control-panel's
+        # actual default/stable branch.
+        "CONTROL_PANEL_REPO_REF": "main",
+        # CONTROL_PANEL_REPO_TOKEN: a GitHub Personal Access Token with
+        # read-only access to TitanEd/control-panel (it's a private repo).
+        # MUST be set per-environment -- there is no safe default:
+        #   tutor config save --set INDIGO_CONTROL_PANEL_REPO_TOKEN=<token>
+        # Use a fine-grained PAT scoped to *only* this one repo, read-only,
+        # not a classic all-repos token -- if it ever leaks, the blast
+        # radius is one private repo, not the whole GitHub org. This value
+        # lives in config.yml in plaintext, same as every other secret this
+        # deployment already stores there (DB passwords, JWT keys, etc.) --
+        # protect config.yml itself (file permissions, EC2 instance access
+        # control, never commit it to git) rather than trying to avoid this
+        # storage mechanism. See tutorindigo's install-control-panel patch
+        # below for the "Docker BuildKit secret mount" alternative if a
+        # stricter, zero-token-at-rest posture is ever needed instead.
+        "CONTROL_PANEL_REPO_TOKEN": "",
     },
     "unique": {},
     "overrides": {},
@@ -104,21 +130,6 @@ hooks.Filters.CONFIG_UNIQUE.add_items(
 )
 hooks.Filters.CONFIG_OVERRIDES.add_items(list(config["overrides"].items()))
 
-
-# MFEs that get the Indigo brand package at image build time.
-# Header/footer stay each MFE's native chrome (no PLUGIN_SLOTS overrides).
-#
-# Every MFE already inherits the TitanEd design tokens (colors, typography,
-# spacing, buttons, forms, links, dropdowns, shared header/footer chrome) at
-# runtime via MFE_CONFIG["PARAGON_THEME_URLS"] below, which is NOT scoped to
-# this list -- it applies to every MFE unconditionally. What this list
-# actually controls is narrower: which MFEs get the '@edx/brand' fork
-# installed at Docker build time, which is what supplies the TitanEd
-# logo/favicon/self-hosted font assets baked into that MFE's bundle. Without
-# being in this list, an MFE still renders with TitanEd colors/spacing/buttons,
-# but shows the stock Open edX logo in its header.
-#
-# Public / learner-facing MFEs:
 indigo_styled_mfes = [
     "learning",
     "learner-dashboard",
@@ -127,12 +138,6 @@ indigo_styled_mfes = [
     "discussions",
     "authoring",
     "catalog",
-    # Staff-only / internal MFEs (not learner-facing, but must still match the
-    # brand -- these reuse the exact same shared header/footer components as
-    # the public MFEs above, e.g. Communications + ORA Grading render
-    # `LearningHeader`/`Header` with `.learning-header`, and Admin Console
-    # renders `StudioHeader` -- all already styled generically in
-    # tels-brand-openedx/paragon/_header.scss + _footer.scss):
     "gradebook",
     "ora-grading",
     "communications",
@@ -178,48 +183,7 @@ BRAND_THEME_DEPLOYED = (
     "https://raw.githubusercontent.com/TitanEd/tels-brand-openedx/"
     "refs/heads/native-tels-brand-openedx/dist"
 )
-# "live": brandOverride is served by the ui_configuration Django app
-# (control-panel repo) instead of straight from GitHub. That endpoint
-# fetches BRAND_THEME_DEPLOYED itself server-side and layers a live,
-# admin-editable `:root {...}` color override on top of it (see
-# control-panel/ui_configuration/README.md and tels_ulmo/CLAUDE.md §9) --
-# so a color change made in Django admin reaches every MFE on its next
-# page load with no `make build`, no `git push`, and no Tutor rebuild.
-# Typography/spacing/layout/component tokens are untouched by this path
-# and still come from BRAND_THEME_DEPLOYED via that same server-side fetch.
-#
-# HOW THE URL BELOW GETS BUILT -- read this before touching it, this took
-# two wrong attempts to get right:
-#
-# Attempt 1 was `{{ LMS_ROOT_URL }}` (Jinja syntax): FAILED outright --
-# `tutor config save` raised "Missing configuration value: 'LMS_ROOT_URL' is
-# undefined". `LMS_ROOT_URL` isn't a Tutor/Jinja config variable at all --
-# it's a plain Python variable Tutor's own lms settings template defines
-# *later in the same rendered file* (`LMS_ROOT_URL = "http://{}".format(
-# LMS_BASE)`), so it doesn't exist yet when Jinja renders this patch.
-#
-# Attempt 2 was `{% if ENABLE_HTTPS %}https{% else %}http{% endif %}://
-# {{ LMS_HOST }}` (genuine Jinja config variables this time, and it DID
-# render without error) -- but it's *silently wrong* in `tutor dev` mode:
-# it always omits the port, which is only correct behind Caddy on 80/443
-# (`tutor local`/production). In `tutor dev`, LMS is exposed directly on
-# `:8000` with no reverse proxy in front, so this produced
-# "http://local.openedx.io/..." (port 80, nothing listening) instead of
-# "http://local.openedx.io:8000/...". `tutor config save` succeeded, the
-# rendered JSON looked fine, curling it directly even returned 200 (it was
-# just resolving to whatever happens to be on port 80) -- the only way this
-# surfaced was an actual browser fetch failing silently, no CSS applied,
-# no visible error. Lesson: do not hand-roll host:port construction here.
-#
-# The FIX: reference the real `LMS_ROOT_URL` Python variable after all --
-# just not via Jinja. Since it's a plain Python name already correctly
-# computed per run-mode (WITH the dev port, WITHOUT one behind Caddy) by
-# the time our patch's line executes, we build the dict with a placeholder
-# string here in plugin.py, then splice a real `+ LMS_ROOT_URL +` Python
-# expression into the *rendered* JSON text below (see `_splice_lms_root_url`)
-# so the generated settings.py line becomes valid Python that references
-# the bare `LMS_ROOT_URL` name at Django-settings-execution time, not at
-# Jinja-render time or at this plugin.py's own load time.
+
 _LMS_ROOT_URL_PLACEHOLDER = "__LMS_ROOT_URL_PLACEHOLDER__"
 BRAND_THEME_LIVE = f"{_LMS_ROOT_URL_PLACEHOLDER}/ui_configuration/theme"
 
@@ -260,14 +224,6 @@ paragon_theme_urls = {
 paragon_theme_urls_json = json.dumps(paragon_theme_urls)
 
 if BRAND_THEME_SOURCE == "live":
-    # Break out of the JSON string literal at the placeholder and splice in
-    # a real Python string-concatenation expression instead, so the
-    # generated settings.py line ends up referencing the bare `LMS_ROOT_URL`
-    # name (see the long comment above `_LMS_ROOT_URL_PLACEHOLDER`) rather
-    # than a JSON-quoted copy of the placeholder text itself.
-    #   '"__LMS_ROOT_URL_PLACEHOLDER__/foo"'   (JSON string, wrong)
-    #     becomes
-    #   '"" + LMS_ROOT_URL + "/foo"'           (Python expression, correct)
     placeholder_count = paragon_theme_urls_json.count(f'"{_LMS_ROOT_URL_PLACEHOLDER}')
     assert placeholder_count == 3, (  # core + light + dark brandOverride URLs
         f"tutorindigo/plugin.py: expected exactly 3 occurrences of the "
@@ -283,18 +239,6 @@ if BRAND_THEME_SOURCE == "live":
         '"" + LMS_ROOT_URL + "',
     )
 
-# Logo / footer-logo / favicon -- served by the same ui_configuration app,
-# same "live" feature flag. Unlike PARAGON_THEME_URLS above, these are
-# simple single-value assignments (not nested inside a json.dumps() JSON
-# blob), so LMS_ROOT_URL can be referenced directly as Python source here --
-# no placeholder/splice trick needed for this part.
-#
-# All three of LOGO_URL/LOGO_WHITE_URL/LOGO_TRADEMARK_URL point at the same
-# /ui_configuration/logo endpoint: the stock (pre-"live") config already
-# pointed all three at the identical theming-asset URL, so nothing is lost
-# by unifying them behind one admin-uploaded image. FOOTER_LOGO_URL is
-# best-effort -- see control-panel/ui_configuration/views.py's
-# footer_logo_redirect docstring for why.
 logo_favicon_settings = ""
 if BRAND_THEME_SOURCE == "live":
     logo_favicon_settings = """
@@ -311,3 +255,18 @@ MFE_CONFIG["PARAGON_THEME_URLS"] = {paragon_theme_urls_json}
 """
 
 hooks.Filters.ENV_PATCHES.add_item(("mfe-lms-common-settings", fstring))
+
+hooks.Filters.ENV_PATCHES.add_item(
+    (
+        "openedx-dockerfile-post-python-requirements",
+        """
+{% if INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT %}
+{% if INDIGO_CONTROL_PANEL_REPO_TOKEN %}
+RUN --mount=type=cache,target=/openedx/.cache/pip,sharing=shared $PIP_COMMAND install 'git+https://{{ INDIGO_CONTROL_PANEL_REPO_TOKEN }}@github.com/TitanEd/control-panel.git@{{ INDIGO_CONTROL_PANEL_REPO_REF }}'
+{% else %}
+RUN echo "ERROR: INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT is true but INDIGO_CONTROL_PANEL_REPO_TOKEN is not set. control-panel (the private repo the ui_configuration Django app lives in) cannot be installed without it. Fix: tutor config save --set INDIGO_CONTROL_PANEL_REPO_TOKEN=<your-github-token> (use a fine-grained, read-only, single-repo-scoped PAT), then rebuild." && exit 1
+{% endif %}
+{% endif %}
+""",
+    )
+)
