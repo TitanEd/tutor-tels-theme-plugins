@@ -436,7 +436,7 @@ for _mfe, _relpath in LEARNING_HEADER_WRAP_FILES.items():
 
 # TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and "deployed".
 # Switch here ↓
-BRAND_THEME_SOURCE = "development"  # "development" | "deployed"
+BRAND_THEME_SOURCE = "deployed"  # "development" | "deployed"
 
 # `default` = full Paragon CSS; `brandOverride` = TitanEd tokens (Template A / public).
 PARAGON_VERSION = "23.14.9"
