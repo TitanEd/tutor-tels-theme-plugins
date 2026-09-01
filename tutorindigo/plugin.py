@@ -267,44 +267,86 @@ for path in itertools.chain(
 # @edx/frontend-component-footer render *inside their own components*
 # (header_desktop_user_menu_toggle.v1, header_desktop_user_menu.v1,
 # header_mobile_user_menu.v1, footer.v1), instead of hiding/replacing the
-# app-level "org.openedx.frontend.layout.header.v1" wrapper slot.
+# app-level "org.openedx.frontend.layout.header.v1" wrapper slot. Those
+# inner slots exist as soon as an app renders <Header /> / <LearningHeader />
+# / <FooterSlot />, whether or not that app's own source wraps them in an
+# outer PluginSlot — so no per-MFE source-file patching is needed. The
+# Language dropdown and dark-mode toggle are simply not part of this
+# override, so they no longer render in the header at all.
 #
-# This is deliberately simpler than swapping in a fully custom header
-# component: those inner slots exist as soon as an app renders <Header /> /
-# <LearningHeader /> / <FooterSlot />, whether or not that app's own source
-# wraps them in an outer PluginSlot — so no per-MFE source-file patching is
-# needed, for any MFE, regardless of its @edx/frontend-component-header
-# version. The Language dropdown and dark-mode toggle are simply not part of
-# this override, so they no longer render in the header at all.
-#
-# What's still native (untouched) per this method: logo, primary nav links,
-# and the header's own responsive desktop/mobile breakpoint — "header
-# material" stays whatever the brand package / native header already
-# provides. Only the user-menu toggle (avatar + name) and the user-menu
-# dropdown contents (Dashboard/Profile/Account/[Control Hub/Studio for
-# admins]/Sign out) are replaced, via CustomHeaderUserMenuDropdown.jsx and
-# CustomHeaderUserMenuItem.jsx.
-# ---------------------------------------------------------------------------
+# IMPORTANT — the ids differ by which header component an MFE renders, and
+# by its exact pinned @edx/frontend-component-header version (verified below
+# against each MFE's locked version on this project's release/ulmo.1 pin,
+# 2026-08-31 — re-verify if that pin ever moves):
+#   - account/profile/gradebook/learner-dashboard render the plain
+#     <Header /> (DesktopHeader/MobileHeader) -> "header_desktop_user_menu*"
+#     / "header_mobile_user_menu.v1" ids.
+#   - discussions/communications/ora-grading/learning render
+#     <LearningHeader /> instead -> a *different* set of ids,
+#     "header_learning_user_menu*". Blanket-applying the desktop ids to
+#     these (an earlier version of this file did) silently no-ops there —
+#     the PluginSlot with that id simply never exists, so nothing renders.
+#   - The user-menu *toggle* (avatar + name button) is its own separate
+#     PluginSlot that didn't exist before @edx/frontend-component-header
+#     6.6.0. profile (6.4.2) and ora-grading (6.4.0) predate it, so only the
+#     dropdown *contents* can be overridden there — the toggle itself stays
+#     native. profile gets a mergeProps fallback (see USERNAME_FALLBACK_MFES
+#     below) that at least swaps in the full display name + photo;
+#     LearningHeader has no equivalent override point for ora-grading.
+HEADER_USER_MENU_SLOTS: dict[str, tuple[str, str, str | None]] = {
+    # mfe -> (header component, dropdown-contents slot id, toggle slot id or None)
+    # DesktopHeader apps
+    "account": (
+        "desktop",
+        "org.openedx.frontend.layout.header_desktop_user_menu.v1",
+        "org.openedx.frontend.layout.header_desktop_user_menu_toggle.v1",
+    ),  # @edx/frontend-component-header 6.6.1
+    "profile": (
+        "desktop",
+        "org.openedx.frontend.layout.header_desktop_user_menu.v1",
+        None,
+    ),  # 6.4.2 — no toggle slot yet
+    "gradebook": (
+        "desktop",
+        "org.openedx.frontend.layout.header_desktop_user_menu.v1",
+        "org.openedx.frontend.layout.header_desktop_user_menu_toggle.v1",
+    ),  # 6.6.1
+    "learner-dashboard": (
+        "desktop",
+        "org.openedx.frontend.layout.header_desktop_user_menu.v1",
+        "org.openedx.frontend.layout.header_desktop_user_menu_toggle.v1",
+    ),  # 6.6.1
+    # LearningHeader apps
+    "discussions": (
+        "learning",
+        "org.openedx.frontend.layout.header_learning_user_menu.v1",
+        "org.openedx.frontend.layout.header_learning_user_menu_toggle.v1",
+    ),  # 6.6.1
+    "communications": (
+        "learning",
+        "org.openedx.frontend.layout.header_learning_user_menu.v1",
+        "org.openedx.frontend.layout.header_learning_user_menu_toggle.v1",
+    ),  # 6.6.1
+    "ora-grading": (
+        "learning",
+        "org.openedx.frontend.layout.header_learning_user_menu.v1",
+        None,
+    ),  # 6.4.0 — no toggle slot yet
+    "learning": (
+        "learning",
+        "org.openedx.frontend.layout.header_learning_user_menu.v1",
+        "org.openedx.frontend.layout.header_learning_user_menu_toggle.v1",
+    ),  # 8.0.0
+}
 
-# MFEs that ship @edx/frontend-component-header/@edx/frontend-component-footer
-# and get this override — same list as the reference plugin. authn/authoring/
-# admin-console are excluded — none of them ship the header package, so these
-# PluginSlots don't exist there (authn/authoring still get the brand package
-# via indigo_styled_mfes above). Any MFE whose deployed
-# @edx/frontend-component-header build predates these PluginSlots simply
-# won't render the override — same "apply everywhere, no per-MFE special
-# casing" approach as the reference plugin.
-HEADER_STYLED_MFES = [
-    "learning",
-    "learner-dashboard",
-    "profile",
-    "account",
-    "discussions",
-    "communications",
-    "gradebook",
-    "ora-grading",
-    "public",
-]
+# DesktopHeader apps also get a separate mobile-viewport slot (LearningHeader
+# has no separate mobile variant — one slot covers both).
+MOBILE_USER_MENU_SLOT_ID = "org.openedx.frontend.layout.header_mobile_user_menu.v1"
+
+# public isn't part of this table: it's a separately-maintained custom app
+# (own build context/image, doesn't declare @edx/frontend-component-header),
+# not something this override reaches — it manages its own header.
+HEADER_STYLED_MFES = list(HEADER_USER_MENU_SLOTS) + ["public"]
 
 FOOTER_PLUGINS = """
             {
@@ -369,60 +411,68 @@ def _add_footer(mfe: str, slot: str = "org.openedx.frontend.layout.footer.v1") -
 
 
 def _add_user_menu_slots(mfe: str) -> None:
-    """Avatar/name toggle + admin-aware dropdown contents, desktop & mobile."""
+    """Avatar/name toggle (where that MFE's header version has the slot) +
+    admin-aware dropdown contents, on the ids that MFE's *actual* header
+    component and pinned package version expose — see HEADER_USER_MENU_SLOTS.
+    """
+    header_kind, menu_slot_id, toggle_slot_id = HEADER_USER_MENU_SLOTS[mfe]
+
+    if toggle_slot_id:
+        PLUGIN_SLOTS.add_item((mfe, toggle_slot_id, USER_MENU_TOGGLE_PLUGIN))
+
     PLUGIN_SLOTS.add_item(
         (
             mfe,
-            "org.openedx.frontend.layout.header_desktop_user_menu_toggle.v1",
-            USER_MENU_TOGGLE_PLUGIN,
-        )
-    )
-    PLUGIN_SLOTS.add_item(
-        (
-            mfe,
-            "org.openedx.frontend.layout.header_desktop_user_menu.v1",
+            menu_slot_id,
             _user_menu_items_plugin("custom_desktop_user_menu_component"),
         )
     )
-    PLUGIN_SLOTS.add_item(
-        (
-            mfe,
-            "org.openedx.frontend.layout.header_mobile_user_menu.v1",
-            _user_menu_items_plugin("custom_mobile_user_menu_component"),
+
+    if header_kind == "desktop":
+        PLUGIN_SLOTS.add_item(
+            (
+                mfe,
+                MOBILE_USER_MENU_SLOT_ID,
+                _user_menu_items_plugin("custom_mobile_user_menu_component"),
+            )
         )
-    )
 
 
 for mfe in HEADER_STYLED_MFES:
     _add_footer(mfe)
-    _add_user_menu_slots(mfe)
+    if mfe in HEADER_USER_MENU_SLOTS:
+        _add_user_menu_slots(mfe)
 
 # authoring (Studio) has its own header, unrelated to
 # @edx/frontend-component-header — only its footer slot is shared.
 _add_footer("authoring", "org.openedx.frontend.layout.studio_footer.v1")
 
-# profile ships @edx/frontend-component-header v6, which has no
-# DesktopUserMenuToggleSlot for the avatar/name swap above. Use
-# header_desktop.v1 / header_mobile.v1 (both support mergeProps) instead, to
-# override the username/avatar props on the native toggle with the user's
-# full display name and photo.
-for slot in [
-    "org.openedx.frontend.layout.header_desktop.v1",
-    "org.openedx.frontend.layout.header_mobile.v1",
-]:
-    PLUGIN_SLOTS.add_item(
-        (
-            "profile",
-            slot,
-            """
+# profile predates the toggle-slot PluginSlot (see HEADER_USER_MENU_SLOTS
+# above), so fall back to overriding the username/avatar *props* on the
+# native toggle instead, via the outer header_desktop.v1 / header_mobile.v1
+# slot (both support mergeProps).
+USERNAME_FALLBACK_MFES = {
+    "profile": (
+        "org.openedx.frontend.layout.header_desktop.v1",
+        "org.openedx.frontend.layout.header_mobile.v1",
+    ),
+}
+
+for _mfe, _slots in USERNAME_FALLBACK_MFES.items():
+    for _slot in _slots:
+        PLUGIN_SLOTS.add_item(
+            (
+                _mfe,
+                _slot,
+                """
             {
                 op: PLUGIN_OPERATIONS.Modify,
                 widgetId: 'default_contents',
                 fn: modifyHeaderUsername,
             },
         """,
+            )
         )
-    )
 
 
 # TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and "deployed".
