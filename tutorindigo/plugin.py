@@ -165,9 +165,9 @@ for path in glob(
     with open(path, encoding="utf-8") as patch_file:
         hooks.Filters.ENV_PATCHES.add_item((os.path.basename(path), patch_file.read()))
 
-# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and "deployed".
-# Switch here ↓
-BRAND_THEME_SOURCE = "deployed"  # "development" | "deployed"
+# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development", "deployed"
+# and "live". Switch here ↓
+BRAND_THEME_SOURCE = "live"  # "development" | "deployed" | "live"
 
 # `default` = full Paragon CSS; `brandOverride` = TitanEd tokens (+ catalog styles).
 PARAGON_VERSION = "23.14.9"
@@ -178,10 +178,55 @@ BRAND_THEME_DEPLOYED = (
     "https://raw.githubusercontent.com/TitanEd/tels-brand-openedx/"
     "refs/heads/native-tels-brand-openedx/dist"
 )
+# "live": brandOverride is served by the ui_configuration Django app
+# (control-panel repo) instead of straight from GitHub. That endpoint
+# fetches BRAND_THEME_DEPLOYED itself server-side and layers a live,
+# admin-editable `:root {...}` color override on top of it (see
+# control-panel/ui_configuration/README.md and tels_ulmo/CLAUDE.md §9) --
+# so a color change made in Django admin reaches every MFE on its next
+# page load with no `make build`, no `git push`, and no Tutor rebuild.
+# Typography/spacing/layout/component tokens are untouched by this path
+# and still come from BRAND_THEME_DEPLOYED via that same server-side fetch.
+#
+# HOW THE URL BELOW GETS BUILT -- read this before touching it, this took
+# two wrong attempts to get right:
+#
+# Attempt 1 was `{{ LMS_ROOT_URL }}` (Jinja syntax): FAILED outright --
+# `tutor config save` raised "Missing configuration value: 'LMS_ROOT_URL' is
+# undefined". `LMS_ROOT_URL` isn't a Tutor/Jinja config variable at all --
+# it's a plain Python variable Tutor's own lms settings template defines
+# *later in the same rendered file* (`LMS_ROOT_URL = "http://{}".format(
+# LMS_BASE)`), so it doesn't exist yet when Jinja renders this patch.
+#
+# Attempt 2 was `{% if ENABLE_HTTPS %}https{% else %}http{% endif %}://
+# {{ LMS_HOST }}` (genuine Jinja config variables this time, and it DID
+# render without error) -- but it's *silently wrong* in `tutor dev` mode:
+# it always omits the port, which is only correct behind Caddy on 80/443
+# (`tutor local`/production). In `tutor dev`, LMS is exposed directly on
+# `:8000` with no reverse proxy in front, so this produced
+# "http://local.openedx.io/..." (port 80, nothing listening) instead of
+# "http://local.openedx.io:8000/...". `tutor config save` succeeded, the
+# rendered JSON looked fine, curling it directly even returned 200 (it was
+# just resolving to whatever happens to be on port 80) -- the only way this
+# surfaced was an actual browser fetch failing silently, no CSS applied,
+# no visible error. Lesson: do not hand-roll host:port construction here.
+#
+# The FIX: reference the real `LMS_ROOT_URL` Python variable after all --
+# just not via Jinja. Since it's a plain Python name already correctly
+# computed per run-mode (WITH the dev port, WITHOUT one behind Caddy) by
+# the time our patch's line executes, we build the dict with a placeholder
+# string here in plugin.py, then splice a real `+ LMS_ROOT_URL +` Python
+# expression into the *rendered* JSON text below (see `_splice_lms_root_url`)
+# so the generated settings.py line becomes valid Python that references
+# the bare `LMS_ROOT_URL` name at Django-settings-execution time, not at
+# Jinja-render time or at this plugin.py's own load time.
+_LMS_ROOT_URL_PLACEHOLDER = "__LMS_ROOT_URL_PLACEHOLDER__"
+BRAND_THEME_LIVE = f"{_LMS_ROOT_URL_PLACEHOLDER}/ui_configuration/theme"
 
 BRAND_THEME_BASES = {
     "development": BRAND_THEME_DEVELOPMENT,
     "deployed": BRAND_THEME_DEPLOYED,
+    "live": BRAND_THEME_LIVE,
 }
 BRAND_DIST = BRAND_THEME_BASES[BRAND_THEME_SOURCE].rstrip("/")
 
@@ -212,8 +257,57 @@ paragon_theme_urls = {
     },
 }
 
+paragon_theme_urls_json = json.dumps(paragon_theme_urls)
+
+if BRAND_THEME_SOURCE == "live":
+    # Break out of the JSON string literal at the placeholder and splice in
+    # a real Python string-concatenation expression instead, so the
+    # generated settings.py line ends up referencing the bare `LMS_ROOT_URL`
+    # name (see the long comment above `_LMS_ROOT_URL_PLACEHOLDER`) rather
+    # than a JSON-quoted copy of the placeholder text itself.
+    #   '"__LMS_ROOT_URL_PLACEHOLDER__/foo"'   (JSON string, wrong)
+    #     becomes
+    #   '"" + LMS_ROOT_URL + "/foo"'           (Python expression, correct)
+    placeholder_count = paragon_theme_urls_json.count(f'"{_LMS_ROOT_URL_PLACEHOLDER}')
+    assert placeholder_count == 3, (  # core + light + dark brandOverride URLs
+        f"tutorindigo/plugin.py: expected exactly 3 occurrences of the "
+        f"LMS_ROOT_URL placeholder in PARAGON_THEME_URLS (one each for "
+        f"core/light/dark brandOverride), found {placeholder_count}. "
+        f"paragon_theme_urls's shape changed without updating this splice -- "
+        f"fix this before running `tutor config save`, a silent mismatch "
+        f"here previously shipped a broken (wrong-port) brandOverride URL "
+        f"with no visible error anywhere except an actual browser fetch."
+    )
+    paragon_theme_urls_json = paragon_theme_urls_json.replace(
+        f'"{_LMS_ROOT_URL_PLACEHOLDER}',
+        '"" + LMS_ROOT_URL + "',
+    )
+
+# Logo / footer-logo / favicon -- served by the same ui_configuration app,
+# same "live" feature flag. Unlike PARAGON_THEME_URLS above, these are
+# simple single-value assignments (not nested inside a json.dumps() JSON
+# blob), so LMS_ROOT_URL can be referenced directly as Python source here --
+# no placeholder/splice trick needed for this part.
+#
+# All three of LOGO_URL/LOGO_WHITE_URL/LOGO_TRADEMARK_URL point at the same
+# /ui_configuration/logo endpoint: the stock (pre-"live") config already
+# pointed all three at the identical theming-asset URL, so nothing is lost
+# by unifying them behind one admin-uploaded image. FOOTER_LOGO_URL is
+# best-effort -- see control-panel/ui_configuration/views.py's
+# footer_logo_redirect docstring for why.
+logo_favicon_settings = ""
+if BRAND_THEME_SOURCE == "live":
+    logo_favicon_settings = """
+MFE_CONFIG["LOGO_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["LOGO_WHITE_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["LOGO_TRADEMARK_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["FOOTER_LOGO_URL"] = LMS_ROOT_URL + "/ui_configuration/footer-logo"
+MFE_CONFIG["FAVICON_URL"] = LMS_ROOT_URL + "/ui_configuration/favicon"
+"""
+
 fstring = f"""
-MFE_CONFIG["PARAGON_THEME_URLS"] = {json.dumps(paragon_theme_urls)}
+MFE_CONFIG["PARAGON_THEME_URLS"] = {paragon_theme_urls_json}
+{logo_favicon_settings}
 """
 
 hooks.Filters.ENV_PATCHES.add_item(("mfe-lms-common-settings", fstring))
