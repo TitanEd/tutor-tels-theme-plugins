@@ -8,6 +8,7 @@ from glob import glob
 import importlib_resources
 from tutor import hooks
 from tutor.__about__ import __version_suffix__
+from tutormfe.hooks import MFE_APPS
 
 from .__about__ import __version__
 
@@ -143,6 +144,21 @@ indigo_styled_mfes = [
     "communications",
     "admin-console",
 ]
+
+FORKED_MFE_APPS: dict[str, dict[str, str | int]] = {
+    "learning": {
+        "repository": "https://github.com/TitanEd/frontend-app-learning.git",
+        "port": 2000,
+        "version": "native-tels/ulmo.4",
+    },
+}
+
+
+@MFE_APPS.add()
+def _add_forked_mfe_apps(mfes: dict[str, t.Any]) -> dict[str, t.Any]:
+    mfes.update(FORKED_MFE_APPS)
+    return mfes
+
 
 for mfe in indigo_styled_mfes:
     hooks.Filters.ENV_PATCHES.add_items(
