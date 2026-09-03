@@ -9,7 +9,7 @@ from glob import glob
 import importlib_resources
 from tutor import hooks
 from tutor.__about__ import __version_suffix__
-from tutormfe.hooks import PLUGIN_SLOTS
+from tutormfe.hooks import MFE_APPS, PLUGIN_SLOTS
 
 from .__about__ import __version__
 
@@ -110,6 +110,37 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         "CONTACT_URL": "/public/contact",
         "PRIVACY_URL": "/public/privacy",
         "TERMS_URL": "/public/terms",
+        # Ported from native-tels (tutor-tels-theme-plugins' other branch) to
+        # bring the live, DB-driven color/font/legacy-CSS theming
+        # (control-panel's `ui_configuration` app) to this deployment type
+        # too -- see BRAND_THEME_SOURCE below for the other half of this.
+        #
+        # CONTROL_PANEL_INSTALL_FROM_GIT: set to true ONLY on environments
+        # that don't already have control-panel mounted from local disk --
+        # i.e. UAT/prod, never local dev:
+        #   tutor config save --set INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT=true
+        "CONTROL_PANEL_INSTALL_FROM_GIT": False,
+        # CONTROL_PANEL_REPO_REF: which branch/tag/commit of control-panel
+        # to install. Override per environment, e.g.
+        #   tutor config save --set INDIGO_CONTROL_PANEL_REPO_REF=uat
+        # Defaults to "main" -- change this if that isn't control-panel's
+        # actual default/stable branch.
+        "CONTROL_PANEL_REPO_REF": "main",
+        # CONTROL_PANEL_REPO_TOKEN: a GitHub Personal Access Token with
+        # read-only access to TitanEd/control-panel (it's a private repo).
+        # MUST be set per-environment -- there is no safe default:
+        #   tutor config save --set INDIGO_CONTROL_PANEL_REPO_TOKEN=<token>
+        # Use a fine-grained PAT scoped to *only* this one repo, read-only,
+        # not a classic all-repos token -- if it ever leaks, the blast
+        # radius is one private repo, not the whole GitHub org. This value
+        # lives in config.yml in plaintext, same as every other secret this
+        # deployment already stores there (DB passwords, JWT keys, etc.) --
+        # protect config.yml itself (file permissions, EC2 instance access
+        # control, never commit it to git) rather than trying to avoid this
+        # storage mechanism. See tutorindigo's install-control-panel patch
+        # below for the "Docker BuildKit secret mount" alternative if a
+        # stricter, zero-token-at-rest posture is ever needed instead.
+        "CONTROL_PANEL_REPO_TOKEN": "",
     },
     "unique": {},
     "overrides": {},
@@ -177,6 +208,26 @@ hooks.Filters.CONFIG_UNIQUE.add_items(
     [(f"INDIGO_{key}", value) for key, value in config["unique"].items()]
 )
 hooks.Filters.CONFIG_OVERRIDES.add_items(list(config["overrides"].items()))
+
+
+FORKED_MFE_APPS: dict[str, dict[str, str | int]] = {
+    "learning": {
+        "repository": "https://github.com/TitanEd/frontend-app-learning.git",
+        "port": 2000,
+        "version": "native-tels/ulmo.4",
+    },
+    "tels-public": {
+        "repository": "https://github.com/TitanEd/frontend-app-tels-public.git",
+        "port": 2024,
+        "version": "native-plus-template-a",
+    },
+}
+
+
+@MFE_APPS.add()
+def _add_forked_mfe_apps(mfes: dict[str, t.Any]) -> dict[str, t.Any]:
+    mfes.update(FORKED_MFE_APPS)
+    return mfes
 
 
 #  MFEs that install the Indigo brand package at image build time
@@ -434,9 +485,18 @@ for _mfe, _relpath in LEARNING_HEADER_WRAP_FILES.items():
     )
 
 
-# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and "deployed".
-# Switch here ↓
-BRAND_THEME_SOURCE = "deployed"  # "development" | "deployed"
+# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development", "deployed"
+# and "live". Switch here ↓
+#
+# "live" ported from native-tels (tutor-tels-theme-plugins' other branch,
+# used for the tels_ulmo deployment): points brandOverride at this
+# deployment's own control-panel `ui_configuration` app instead of GitHub
+# raw, so an admin's Django-admin color/font/logo/favicon choices apply
+# immediately on next page load, no rebuild -- see the LMS_ROOT_URL splice
+# and control-panel install patch below for the two pieces that make this
+# work. Template A's original "development"/"deployed" options are
+# untouched -- "live" is purely additive, still opt-in via this constant.
+BRAND_THEME_SOURCE = "live"  # "development" | "deployed" | "live"
 
 # `default` = full Paragon CSS; `brandOverride` = TitanEd tokens (Template A / public).
 PARAGON_VERSION = "23.14.9"
@@ -448,9 +508,24 @@ BRAND_THEME_DEPLOYED = (
     "refs/heads/native-plus-template-a-tels-brand-openedx/dist"
 )
 
+# A plain string placeholder, not a real URL -- LMS_ROOT_URL is a Python
+# variable Tutor's own lms settings template computes *later in the same
+# rendered file* (LMS_ROOT_URL = "http://{}".format(LMS_BASE)), not a Jinja
+# variable available while this f-string itself is being built here. The
+# splice below (only when BRAND_THEME_SOURCE == "live") replaces this
+# placeholder with a genuine `+ LMS_ROOT_URL +` Python expression in the
+# rendered JSON text, so the final generated settings.py line evaluates
+# LMS_ROOT_URL at Django-settings-load time -- correct in both `tutor dev`
+# (LMS_BASE carries a port) and `tutor local`/production (it doesn't),
+# rather than baking in a guessed host/port here that's only right in one
+# of those run modes.
+_LMS_ROOT_URL_PLACEHOLDER = "__LMS_ROOT_URL_PLACEHOLDER__"
+BRAND_THEME_LIVE = f"{_LMS_ROOT_URL_PLACEHOLDER}/ui_configuration/theme"
+
 BRAND_THEME_BASES = {
     "development": BRAND_THEME_DEVELOPMENT,
     "deployed": BRAND_THEME_DEPLOYED,
+    "live": BRAND_THEME_LIVE,
 }
 BRAND_DIST = BRAND_THEME_BASES[BRAND_THEME_SOURCE].rstrip("/")
 
@@ -481,11 +556,69 @@ paragon_theme_urls = {
     },
 }
 
+paragon_theme_urls_json = json.dumps(paragon_theme_urls)
+
+if BRAND_THEME_SOURCE == "live":
+    placeholder_count = paragon_theme_urls_json.count(f'"{_LMS_ROOT_URL_PLACEHOLDER}')
+    assert placeholder_count == 3, (  # core + light + dark brandOverride URLs
+        f"tutorindigo/plugin.py: expected exactly 3 occurrences of the "
+        f"LMS_ROOT_URL placeholder in PARAGON_THEME_URLS (one each for "
+        f"core/light/dark brandOverride), found {placeholder_count}. "
+        f"paragon_theme_urls's shape changed without updating this splice -- "
+        f"fix this before running `tutor config save`, a silent mismatch "
+        f"here previously shipped a broken (wrong-port) brandOverride URL "
+        f"with no visible error anywhere except an actual browser fetch."
+    )
+    paragon_theme_urls_json = paragon_theme_urls_json.replace(
+        f'"{_LMS_ROOT_URL_PLACEHOLDER}',
+        '"" + LMS_ROOT_URL + "',
+    )
+
+# Logo/favicon: same "live" opt-in as the color/font CSS above -- ported
+# from native-tels unchanged. Only set when BRAND_THEME_SOURCE == "live";
+# "development"/"deployed" keep Template A's existing logo/favicon behavior
+# exactly as it was (whatever the active comprehensive theme/MFE defaults
+# already provide) since this block is empty for those two modes.
+logo_favicon_settings = ""
+if BRAND_THEME_SOURCE == "live":
+    logo_favicon_settings = """
+MFE_CONFIG["LOGO_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["LOGO_WHITE_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["LOGO_TRADEMARK_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["FOOTER_LOGO_URL"] = LMS_ROOT_URL + "/ui_configuration/footer-logo"
+MFE_CONFIG["FAVICON_URL"] = LMS_ROOT_URL + "/ui_configuration/favicon"
+"""
+
 fstring = f"""
-MFE_CONFIG["PARAGON_THEME_URLS"] = {json.dumps(paragon_theme_urls)}
+MFE_CONFIG["PARAGON_THEME_URLS"] = {paragon_theme_urls_json}
+{logo_favicon_settings}
 """
 
 hooks.Filters.ENV_PATCHES.add_item(("mfe-lms-common-settings", fstring))
 
 # NOTE: Do NOT replace logo_slot with ThemedLogo — it breaks header logos that
 # already use MFE_CONFIG LOGO_URL / design-token header styles (tels_brand_image).
+
+# Legacy (non-MFE) LMS/CMS pages' live CSS -- served by control-panel's
+# ui_configuration app at /ui_configuration/legacy-theme.css, injected into
+# every LMS/CMS response by that app's own middleware (registered inside
+# control-panel itself, not here -- nothing else to wire up on this side).
+# Only reachable at all once control-panel is actually installed, hence the
+# install patch immediately below; unlike the Paragon/logo pieces above,
+# there's no BRAND_THEME_SOURCE gate for this -- once control-panel is
+# installed, its middleware is simply always active, same as on native-tels.
+
+hooks.Filters.ENV_PATCHES.add_item(
+    (
+        "openedx-dockerfile-post-python-requirements",
+        """
+{% if INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT %}
+{% if INDIGO_CONTROL_PANEL_REPO_TOKEN %}
+RUN --mount=type=cache,target=/openedx/.cache/pip,sharing=shared $PIP_COMMAND install 'git+https://{{ INDIGO_CONTROL_PANEL_REPO_TOKEN }}@github.com/TitanEd/control-panel.git@{{ INDIGO_CONTROL_PANEL_REPO_REF }}'
+{% else %}
+RUN echo "ERROR: INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT is true but INDIGO_CONTROL_PANEL_REPO_TOKEN is not set. control-panel (the private repo the ui_configuration Django app lives in) cannot be installed without it. Fix: tutor config save --set INDIGO_CONTROL_PANEL_REPO_TOKEN=<your-github-token> (use a fine-grained, read-only, single-repo-scoped PAT), then rebuild." && exit 1
+{% endif %}
+{% endif %}
+""",
+    )
+)
