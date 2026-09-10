@@ -1,6 +1,8 @@
 /**
- * Shared marketing header for MFEs that mount HeaderSlot
- * (PLUGIN_SLOTS → org.openedx.frontend.layout.header.v1).
+ * Shared marketing header (PLUGIN_SLOTS widget id: custom_header /
+ * custom_header_desktop / custom_header_mobile). Slot *ids* differ by MFE —
+ * see HEADER_REPLACEMENT_SLOTS in plugin.py. Do not reuse one slot id across
+ * header families (public header.v1 vs desktop vs learning).
  * Template B (Harvard-PLL / tels-mirror): sticky header is the same chrome
  * on every page — solid dark navy, except transparent over the public MFE
  * home hero until the user scrolls. Hamburger opens a "Browse by Subject
@@ -42,7 +44,7 @@ const SUBJECT_ICONS = {
   Theology: faBookOpen,
 };
 
-const telsHeaderMessages = defineMessages({
+const customHeaderMessages = defineMessages({
   homeAria: {
     id: 'tels.header.logo.aria',
     defaultMessage: '{siteName} Home',
@@ -145,7 +147,7 @@ const SUBJECT_MESSAGE_KEY = {
   Theology: 'theology',
 };
 
-const TelsHeader = () => {
+const CustomHeader = () => {
   const intl = useIntl();
   const config = getConfig();
   const location = useLocation();
@@ -201,7 +203,7 @@ const TelsHeader = () => {
                 type="button"
                 className="tels-header__menu-btn"
                 onClick={() => setMenuOpen((open) => !open)}
-                aria-label={intl.formatMessage(menuOpen ? telsHeaderMessages.close : telsHeaderMessages.menu)}
+                aria-label={intl.formatMessage(menuOpen ? customHeaderMessages.close : customHeaderMessages.menu)}
                 aria-expanded={menuOpen}
                 aria-controls="tels-header-menu"
               >
@@ -209,7 +211,7 @@ const TelsHeader = () => {
               </button>
               {hasActiveCatalogFilters && (
                 <NavLink to={catalogUrl.startsWith('http') ? undefined : catalogUrl} className="tels-header__view-all">
-                  {intl.formatMessage(telsHeaderMessages.viewAllCourses)}
+                  {intl.formatMessage(customHeaderMessages.viewAllCourses)}
                 </NavLink>
               )}
             </div>
@@ -217,7 +219,7 @@ const TelsHeader = () => {
             <NavLink
               to={homeUrl.startsWith('http') ? undefined : homeUrl}
               className="tels-header__logo"
-              aria-label={intl.formatMessage(telsHeaderMessages.homeAria, { siteName })}
+              aria-label={intl.formatMessage(customHeaderMessages.homeAria, { siteName })}
             >
               <img src={logoUrl} alt={siteName} />
             </NavLink>
@@ -233,7 +235,7 @@ const TelsHeader = () => {
         <div className="tels-header__menu-clip">
           <div className="tels-container tels-header__menu-inner">
             <h2 className="tels-header__menu-title">
-              {intl.formatMessage(telsHeaderMessages.browseBySubject)}
+              {intl.formatMessage(customHeaderMessages.browseBySubject)}
             </h2>
             <ul className="tels-header__subjects">
               {SUBJECTS.map((subject) => (
@@ -246,7 +248,7 @@ const TelsHeader = () => {
                   >
                     <FontAwesomeIcon icon={SUBJECT_ICONS[subject] || faBookOpen} />
                     <span>
-                      {intl.formatMessage(telsHeaderMessages[SUBJECT_MESSAGE_KEY[subject]])}
+                      {intl.formatMessage(customHeaderMessages[SUBJECT_MESSAGE_KEY[subject]])}
                     </span>
                   </NavLink>
                 </li>
