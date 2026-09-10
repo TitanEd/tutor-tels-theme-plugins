@@ -1,80 +1,95 @@
+const DEFAULT_LINKS = [
+  { titleKey: 'privacy', url: '/privacy' },
+  { titleKey: 'terms', url: '/terms' },
+  { titleKey: 'about', url: '/about' },
+  { titleKey: 'contact', url: '/contact' },
+];
+
+const HIDDEN_FOOTER_KEYS = new Set(['accessibility', 'eea']);
+const HIDDEN_FOOTER_PATHS = ['/accessibility', '/eea-privacy-disclosures'];
+
+const isHiddenFooterLink = (link) => {
+  if (HIDDEN_FOOTER_KEYS.has(link.titleKey)) {
+    return true;
+  }
+  const url = String(link.url || '');
+  return HIDDEN_FOOTER_PATHS.some((path) => url === path || url.endsWith(path));
+};
+
+/**
+ * Shared marketing footer for all MFEs (PLUGIN_SLOTS → indigo_footer).
+ * Template B (Harvard-PLL / tels-mirror). Structure: a single CTA button,
+ * the "Footer Links" column (screen-reader-only heading, matching Drupal's
+ * own pll.harvard.edu markup), and the site logo — no social icons, no
+ * contact block, no bottom copyright bar. The link *set* itself matches
+ * tels-mirror's own Footer.tsx (Privacy / Terms / About Us / Contact), not
+ * the real Harvard site's (which links Accessibility / EEA Privacy
+ * Disclosures instead — not this product's pages). Styles:
+ * tels-brand-openedx .tels-footer* (design tokens only).
+ */
+const indigoFooterMessages = defineMessages({
+  exploreCoursesCta: {
+    id: 'indigo.footer.exploreCoursesCta',
+    defaultMessage: 'Explore courses',
+    description: 'Footer CTA button',
+  },
+  linksHeading: {
+    id: 'indigo.footer.links.heading',
+    defaultMessage: 'Footer Links',
+    description: 'Screen-reader-only heading for the footer legal-links column (matches the live pll.harvard.edu markup, which hides this heading visually)',
+  },
+  privacy: { id: 'indigo.footer.link.privacy', defaultMessage: 'Privacy Policy', description: 'Footer Privacy Policy link' },
+  terms: { id: 'indigo.footer.link.terms', defaultMessage: 'Terms of Use', description: 'Footer Terms of Use link' },
+  about: { id: 'indigo.footer.link.about', defaultMessage: 'About Us', description: 'Footer About Us link' },
+  contact: { id: 'indigo.footer.link.contact', defaultMessage: 'Contact', description: 'Footer Contact link' },
+});
 
 const IndigoFooter = () => {
   const intl = useIntl();
   const config = getConfig();
+  const siteName = config.SITE_NAME || 'TitanEd';
 
-  const indigoFooterNavLinks = config.INDIGO_FOOTER_NAV_LINKS || [];
+  const logoUrl = config.LOGO_URL || config.LOGO_WHITE_URL || `${config.LMS_BASE_URL}/theming/asset/images/logo.png`;
 
-  const messages = {
-    "footer.poweredby.text": {
-      id: "footer.poweredby.text",
-      defaultMessage: "Powered by",
-      description: "text for the footer",
-    },
-    "footer.tutorlogo.altText": {
-      id: "footer.tutorlogo.altText",
-      defaultMessage: "Runs on Tutor",
-      description: "alt text for the footer tutor logo",
-    },
-    "footer.logo.altText": {
-      id: "footer.logo.altText",
-      defaultMessage: "Powered by Open edX",
-      description: "alt text for the footer logo.",
-    },
-    "footer.copyright.text": {
-      id: "footer.copyright.text",
-      defaultMessage: `Copyrights ©${new Date().getFullYear()}. All Rights Reserved.`,
-      description: "copyright text for the footer",
-    },
+  const links = (config.INDIGO_FOOTER_EXPLORE_LINKS || DEFAULT_LINKS)
+    .filter((link) => !isHiddenFooterLink(link));
+
+  const catalogUrl = resolvePublicMfeUrl('/catalog', config);
+  const resolveUrl = (url) => resolvePublicMfeUrl(url, config);
+
+  const linkLabel = (link) => {
+    if (link.titleKey && indigoFooterMessages[link.titleKey]) {
+      return intl.formatMessage(indigoFooterMessages[link.titleKey]);
+    }
+    return link.title || link.titleKey || '';
   };
 
   return (
-    <div className="wrapper wrapper-footer">
-      <footer id="footer" className="tutor-container">
-        <div className="footer-top">
-          <div className="powered-area">
-            <ul className="logo-list">
-              <li>{intl.formatMessage(messages["footer.poweredby.text"])}</li>
-              <li>
-                <a
-                  href="https://edly.io/tutor/"
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <img
-                    src={`${config.LMS_BASE_URL}/theming/asset/images/tutor-logo.png`}
-                    alt={intl.formatMessage(
-                      messages["footer.tutorlogo.altText"]
-                    )}
-                    width="57"
-                  />
-                </a>
-              </li>
-              <li>
-                <a href="https://open.edx.org" rel="noreferrer" target="_blank">
-                  <img
-                    src={`${config.LMS_BASE_URL}/theming/asset/images/openedx-logo.png`}
-                    alt={intl.formatMessage(messages["footer.logo.altText"])}
-                    width="79"
-                  />
-                </a>
-              </li>
-            </ul>
-          </div>
-          <nav className="nav-colophon">
-            <ol>
-              {indigoFooterNavLinks.map((link) => (
-                <li key={link.url}>
-                  <a href={`${link.url.startsWith("http") ? link.url : config.LMS_BASE_URL + link.url}`}>{link.title}</a>
-                </li>
-              ))}
-            </ol>
-          </nav>
+    <footer className="tels-footer" role="contentinfo">
+      <div className="tels-container tels-footer__top">
+        <div>
+          <a href={catalogUrl} className="tels-btn tels-btn--primary">
+            {intl.formatMessage(indigoFooterMessages.exploreCoursesCta)}
+          </a>
         </div>
-        <span className="copyright-site">
-          {intl.formatMessage(messages["footer.copyright.text"])}
-        </span>
-      </footer>
-    </div>
+
+        <div className="tels-footer__col">
+          <h2 className="sr-only">{intl.formatMessage(indigoFooterMessages.linksHeading)}</h2>
+          <ul>
+            {links.map((link) => (
+              <li key={`${link.url}-${link.titleKey || link.title}`}>
+                <a href={resolveUrl(link.url)}>{linkLabel(link)}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="tels-footer__brand">
+          <div className="tels-footer__logo">
+            <img src={logoUrl} alt={siteName} />
+          </div>
+        </div>
+      </div>
+    </footer>
   );
 };
