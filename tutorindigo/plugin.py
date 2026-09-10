@@ -38,16 +38,16 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         ],
         # Marketing footer — legal-links column (IndigoFooter.jsx), shown on
         # every MFE. titleKey maps to indigo.footer.link.* intl messages.
-        # Structure + link set/order matches the real pll.harvard.edu
-        # <footer class="site-footer"> exactly (Accessibility, Privacy Policy,
-        # Terms of Use, EEA Privacy Disclosures) — NOT tels-mirror's own
-        # richer footer, which also links About/Contact and adds social
-        # icons/contact details the real site's footer doesn't have.
+        # Matches the Lovable mock's actual link set (tels-mirror's own
+        # Footer.tsx: Privacy Statement / Terms of Use / About Us / Contact)
+        # — a prior version of this list instead matched the real
+        # pll.harvard.edu footer (Accessibility / Privacy / Terms / EEA
+        # Privacy Disclosures), which isn't this product's footer.
         "FOOTER_EXPLORE_LINKS": [
-            {"titleKey": "accessibility", "url": "/accessibility"},
             {"titleKey": "privacy", "url": "/privacy"},
             {"titleKey": "terms", "url": "/terms"},
-            {"titleKey": "eea", "url": "/eea-privacy-disclosures"},
+            {"titleKey": "about", "url": "/about"},
+            {"titleKey": "contact", "url": "/contact"},
         ],
         # Legacy flat nav list (kept for backward-compatible MFE_CONFIG).
         "FOOTER_NAV_LINKS": [
@@ -67,10 +67,8 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         "COURSES_URL": "/public/catalog",
         "ABOUT_URL": "/public/about",
         "CONTACT_URL": "/public/contact",
-        "ACCESSIBILITY_URL": "/public/accessibility",
         "PRIVACY_URL": "/public/privacy",
         "TERMS_URL": "/public/terms",
-        "EEA_URL": "/public/eea-privacy-disclosures",
     },
     "unique": {},
     "overrides": {},
@@ -178,7 +176,7 @@ for mfe in indigo_styled_mfes:
             (
                 f"mfe-dockerfile-post-npm-install-{mfe}",
                 """
-RUN npm install '@edx/brand@github:@edly-io/brand-openedx#indigo-2.6.0'
+RUN npm install '@edx/brand@github:@TitanEd/tels-brand-openedx#native-plus-template-b-tels-brand-openedx'
 RUN npm install {deps}
 """.format(deps=" ".join(f"'{dep}'" for dep in MARKETING_CHROME_NPM_DEPS)),  # noqa: E501
             ),
@@ -226,7 +224,23 @@ FOOTER_PLUGINS = """
 
 # Full marketing header (public / catalog HeaderSlot). No search bar/logic —
 # product decision for this template.
+#
+# Real slot ids (verified against frontend-component-header's own
+# src/plugin-slots/README.md + DesktopHeaderSlot/MobileHeaderSlot READMEs):
+#   org.openedx.frontend.layout.header_desktop.v1  (alias desktop_header_slot)
+#   org.openedx.frontend.layout.header_mobile.v1   (alias mobile_header_slot)
+# NOTE: 'org.openedx.frontend.layout.header.v1' (previously used here) is NOT
+# a real slot — it's frontend-plugin-framework's own naming-convention ADR
+# using it purely as "this fictitious slot name" to illustrate the reverse-DNS
+# scheme. No MFE implements it, so TelsHeader never actually mounted before
+# this fix. Also add the Hide-default-contents step (FOOTER_PLUGINS already
+# did this correctly) so TelsHeader replaces the stock header instead of
+# rendering alongside it.
 TELS_HEADER_PLUGINS = """
+            {
+                op: PLUGIN_OPERATIONS.Hide,
+                widgetId: 'default_contents',
+            },
             {
                 op: PLUGIN_OPERATIONS.Insert,
                 widget: {
@@ -243,8 +257,9 @@ def _add_footer(mfe: str, slot: str = "org.openedx.frontend.layout.footer.v1") -
     PLUGIN_SLOTS.add_item((mfe, slot, FOOTER_PLUGINS))
 
 
-def _add_tels_header(mfe: str, slot: str = "org.openedx.frontend.layout.header.v1") -> None:
-    PLUGIN_SLOTS.add_item((mfe, slot, TELS_HEADER_PLUGINS))
+def _add_tels_header(mfe: str) -> None:
+    PLUGIN_SLOTS.add_item((mfe, "org.openedx.frontend.layout.header_desktop.v1", TELS_HEADER_PLUGINS))
+    PLUGIN_SLOTS.add_item((mfe, "org.openedx.frontend.layout.header_mobile.v1", TELS_HEADER_PLUGINS))
 
 
 def _add_header_controls_slots(mfe: str) -> None:
@@ -338,13 +353,29 @@ def _add_header_language_and_dark_mode(
 # localhost:3000 replaces Paragon with brand-only CSS → unstyled MFEs.
 PARAGON_VERSION = "23.14.9"
 PARAGON_CDN = f"https://cdn.jsdelivr.net/npm/@openedx/paragon@{PARAGON_VERSION}/dist"
-LOCAL_BRAND = "http://localhost:3000"
+
+# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and
+# "deployed" (same switch as the native-plus-template-a branch).
+# Switch here ↓
+BRAND_THEME_SOURCE = "deployed"  # "development" | "deployed"
+
+BRAND_THEME_DEVELOPMENT = "http://localhost:3000"
+BRAND_THEME_DEPLOYED = (
+    "https://raw.githubusercontent.com/TitanEd/tels-brand-openedx/"
+    "refs/heads/native-plus-template-b-tels-brand-openedx/dist"
+)
+
+BRAND_THEME_BASES = {
+    "development": BRAND_THEME_DEVELOPMENT,
+    "deployed": BRAND_THEME_DEPLOYED,
+}
+BRAND_DIST = BRAND_THEME_BASES[BRAND_THEME_SOURCE].rstrip("/")
 
 paragon_theme_urls = {
     "core": {
         "urls": {
             "default": f"{PARAGON_CDN}/core.min.css",
-            "brandOverride": f"{LOCAL_BRAND}/core.min.css",
+            "brandOverride": f"{BRAND_DIST}/core.min.css",
         },
     },
     "defaults": {
@@ -355,13 +386,13 @@ paragon_theme_urls = {
         "light": {
             "urls": {
                 "default": f"{PARAGON_CDN}/light.min.css",
-                "brandOverride": f"{LOCAL_BRAND}/light.min.css",
+                "brandOverride": f"{BRAND_DIST}/light.min.css",
             },
         },
         "dark": {
             "urls": {
                 "default": f"{PARAGON_CDN}/dark.min.css",
-                "brandOverride": f"{LOCAL_BRAND}/dark.min.css",
+                "brandOverride": f"{BRAND_DIST}/dark.min.css",
             },
         },
     },

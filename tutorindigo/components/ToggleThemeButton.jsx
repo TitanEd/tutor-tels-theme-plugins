@@ -1,3 +1,11 @@
+const toggleThemeButtonMessages = defineMessages({
+  toggleTheme: {
+    id: 'tels.header.themeToggle',
+    defaultMessage: 'Toggle theme',
+    description: 'Toggle between light and dark theme',
+  },
+});
+
 const ToggleThemeButton = () => {
   const intl = useIntl();
   const themeCookie = 'selected-paragon-theme-variant';
@@ -62,11 +70,7 @@ const ToggleThemeButton = () => {
     return null;
   }
 
-  const label = intl.formatMessage({
-    id: 'header.user.theme',
-    defaultMessage: 'Toggle theme',
-    description: 'Toggle between light and dark theme',
-  });
+  const label = intl.formatMessage(toggleThemeButtonMessages.toggleTheme);
 
   // Visual design: tels-brand-openedx/paragon/_header.scss (design tokens).
   return (

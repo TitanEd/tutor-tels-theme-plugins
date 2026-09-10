@@ -1,21 +1,31 @@
 const DEFAULT_LINKS = [
-  { titleKey: 'accessibility', url: '/accessibility' },
   { titleKey: 'privacy', url: '/privacy' },
   { titleKey: 'terms', url: '/terms' },
-  { titleKey: 'eea', url: '/eea-privacy-disclosures' },
+  { titleKey: 'about', url: '/about' },
+  { titleKey: 'contact', url: '/contact' },
 ];
+
+const HIDDEN_FOOTER_KEYS = new Set(['accessibility', 'eea']);
+const HIDDEN_FOOTER_PATHS = ['/accessibility', '/eea-privacy-disclosures'];
+
+const isHiddenFooterLink = (link) => {
+  if (HIDDEN_FOOTER_KEYS.has(link.titleKey)) {
+    return true;
+  }
+  const url = String(link.url || '');
+  return HIDDEN_FOOTER_PATHS.some((path) => url === path || url.endsWith(path));
+};
 
 /**
  * Shared marketing footer for all MFEs (PLUGIN_SLOTS → indigo_footer).
- * Template B (Harvard-PLL / tels-mirror). Structure measured directly from
- * the live pll.harvard.edu <footer class="site-footer"> — NOT from
- * tels-mirror's own Footer.tsx, which invents a richer footer (CTA+blurb /
- * explore-links+social / logo+tagline+contact) the real site doesn't have.
- * The real footer is just 3 columns: a single CTA button, the "Footer
- * Links" legal-links list (screen-reader-only heading, matching Drupal's
- * own markup), and the site logo — no social icons, no contact block, no
- * bottom copyright bar. Styles: tels-brand-openedx .tels-footer* (design
- * tokens only).
+ * Template B (Harvard-PLL / tels-mirror). Structure: a single CTA button,
+ * the "Footer Links" column (screen-reader-only heading, matching Drupal's
+ * own pll.harvard.edu markup), and the site logo — no social icons, no
+ * contact block, no bottom copyright bar. The link *set* itself matches
+ * tels-mirror's own Footer.tsx (Privacy / Terms / About Us / Contact), not
+ * the real Harvard site's (which links Accessibility / EEA Privacy
+ * Disclosures instead — not this product's pages). Styles:
+ * tels-brand-openedx .tels-footer* (design tokens only).
  */
 const indigoFooterMessages = defineMessages({
   exploreCoursesCta: {
@@ -28,10 +38,10 @@ const indigoFooterMessages = defineMessages({
     defaultMessage: 'Footer Links',
     description: 'Screen-reader-only heading for the footer legal-links column (matches the live pll.harvard.edu markup, which hides this heading visually)',
   },
-  accessibility: { id: 'indigo.footer.link.accessibility', defaultMessage: 'Accessibility', description: 'Footer Accessibility link' },
   privacy: { id: 'indigo.footer.link.privacy', defaultMessage: 'Privacy Policy', description: 'Footer Privacy Policy link' },
   terms: { id: 'indigo.footer.link.terms', defaultMessage: 'Terms of Use', description: 'Footer Terms of Use link' },
-  eea: { id: 'indigo.footer.link.eea', defaultMessage: 'EEA Privacy Disclosures', description: 'Footer EEA Privacy Disclosures link' },
+  about: { id: 'indigo.footer.link.about', defaultMessage: 'About Us', description: 'Footer About Us link' },
+  contact: { id: 'indigo.footer.link.contact', defaultMessage: 'Contact', description: 'Footer Contact link' },
 });
 
 const IndigoFooter = () => {
@@ -41,7 +51,8 @@ const IndigoFooter = () => {
 
   const logoUrl = config.LOGO_URL || config.LOGO_WHITE_URL || `${config.LMS_BASE_URL}/theming/asset/images/logo.png`;
 
-  const links = config.INDIGO_FOOTER_EXPLORE_LINKS || DEFAULT_LINKS;
+  const links = (config.INDIGO_FOOTER_EXPLORE_LINKS || DEFAULT_LINKS)
+    .filter((link) => !isHiddenFooterLink(link));
 
   const catalogUrl = resolvePublicMfeUrl('/catalog', config);
   const resolveUrl = (url) => resolvePublicMfeUrl(url, config);
