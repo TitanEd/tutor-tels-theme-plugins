@@ -9,7 +9,7 @@ from glob import glob
 import importlib_resources
 from tutor import hooks
 from tutor.__about__ import __version_suffix__
-from tutormfe.hooks import MFE_APPS, MFE_ATTRS_TYPE, PLUGIN_SLOTS
+from tutormfe.hooks import PLUGIN_SLOTS
 
 from .__about__ import __version__
 
@@ -36,35 +36,84 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
             {"value": "pt-pt", "label": "Português"},
             {"value": "zh-cn", "label": "中文 (简体)"},
         ],
-        # Marketing footer — legal-links column (IndigoFooter.jsx), shown on
-        # every MFE. titleKey maps to indigo.footer.link.* intl messages.
-        # Matches the Lovable mock's actual link set (tels-mirror's own
-        # Footer.tsx: Privacy Statement / Terms of Use / About Us / Contact)
-        # — a prior version of this list instead matched the real
-        # pll.harvard.edu footer (Accessibility / Privacy / Terms / EEA
-        # Privacy Disclosures), which isn't this product's footer.
+        # Marketing footer columns — shown on every MFE (IndigoFooter).
+        # titleKey maps to indigo.footer.link.* intl messages in IndigoFooter.jsx.
+        # NOTE: kept at Template B's own working values (privacy/terms/about/
+        # contact), NOT copied from Template A's (home/courses/about/contact) —
+        # IndigoFooter.jsx's own indigoFooterMessages dict here only has
+        # message ids for privacy/terms/about/contact. Copying Template A's
+        # literal values would render "home"/"courses" as raw untranslated
+        # text (linkLabel()'s fallback) instead of breaking anything at parse
+        # time — a real visible regression, not a config-shape mismatch. Fix
+        # together with IndigoFooter.jsx if you want Template A's exact set.
         "FOOTER_EXPLORE_LINKS": [
             {"titleKey": "privacy", "url": "/privacy"},
             {"titleKey": "terms", "url": "/terms"},
             {"titleKey": "about", "url": "/about"},
             {"titleKey": "contact", "url": "/contact"},
         ],
+        "FOOTER_COMPANY_LINKS": [
+            {"titleKey": "about", "url": "/about"},
+            {"titleKey": "contact", "url": "/contact"},
+        ],
+        "FOOTER_SUPPORT_LINKS": [
+            {"titleKey": "privacy", "url": "/privacy"},
+            {"titleKey": "terms", "url": "/terms"},
+        ],
+        "FOOTER_CONTACT": {
+            "email": "Legal@TitanEd.com",
+            "web_url": "https://titaned.com/",
+            "web_label": "titaned.com",
+            "address_lines": [
+                "TitanEd, Gurugram,",
+                "Haryana, India",
+            ],
+        },
         # Legacy flat nav list (kept for backward-compatible MFE_CONFIG).
         "FOOTER_NAV_LINKS": [
             {"title": "About Us", "url": "/about"},
             {"title": "Contact", "url": "/contact"},
         ],
-        # Marketing header (TelsHeader) + footer (IndigoFooter) — URLs
-        # overridable via tutor config. Default to the public MFE's own route
-        # (Tutor's default MFE routing serves the "public" app at
-        # ${MFE_HOST}/public, not the site root) so these work both from the
-        # public MFE itself and from every other MFE's header/footer linking
-        # back to it. Override HOME_URL if your deployment mounts the public
-        # MFE somewhere else, e.g.:
+        # Social icons shown on every MFE footer.
+        # name must be one of: facebook, twitter, linkedin, youtube, instagram
+        "FOOTER_SOCIAL_LINKS": [
+            {
+                "name": "linkedin",
+                "label": "LinkedIn",
+                "url": "https://www.linkedin.com/company/titaned",
+            },
+            {
+                "name": "facebook",
+                "label": "Facebook",
+                "url": "https://titaned.com/",
+            },
+            {
+                "name": "twitter",
+                "label": "X (Twitter)",
+                "url": "https://titaned.com/",
+            },
+            {
+                "name": "youtube",
+                "label": "YouTube",
+                "url": "https://titaned.com/",
+            },
+            {
+                "name": "instagram",
+                "label": "Instagram",
+                "url": "https://titaned.com/",
+            },
+        ],
+        # Marketing URLs for CustomHeader + IndigoFooter — overridable via tutor
+        # config. Tutor's default MFE routing serves the "public" app at
+        # ${MFE_HOST}/public, not the site root, so these work both from the
+        # public MFE itself and from every other MFE's footer linking back to
+        # it. Override HOME_URL if your deployment mounts the public MFE
+        # somewhere else, e.g.:
         #   tutor config save --set 'INDIGO_HOME_URL="https://learn.example.com"'
+        # COURSES_URL: public MFE /public/courses (search submits here with ?q=).
+        # LEARNER_DASHBOARD_URL is usually set by Tutor MFE; override if needed.
         "HOME_URL": "/public",
-        "CATALOG_URL": "/public/catalog",
-        "COURSES_URL": "/public/catalog",
+        "COURSES_URL": "/public/courses",
         "ABOUT_URL": "/public/about",
         "CONTACT_URL": "/public/contact",
         "PRIVACY_URL": "/public/privacy",
@@ -151,23 +200,7 @@ indigo_styled_mfes = [
     "communications",
     "ora-grading",
     "admin-console",
-    "catalog",
     "public",
-]
-
-# env.config.jsx (Imports.jsx patch) is baked into EVERY styled MFE's image
-# and unconditionally imports these packages for the shared TelsHeader /
-# IndigoFooter / HeaderControls / LanguageMenu bundle. Not every upstream MFE
-# repo declares them (e.g. authoring, discussions, gradebook, learning have
-# none of these in package.json), so `npm run build` fails with
-# "Module not found" for those apps and the whole `tutor images build mfe`
-# aborts. Install them explicitly for every MFE that gets the shared bundle,
-# regardless of what its own package.json already has.
-MARKETING_CHROME_NPM_DEPS = [
-    "@fortawesome/react-fontawesome@^0.2.6",
-    "@fortawesome/free-brands-svg-icons@^6.7.2",
-    "@fortawesome/free-solid-svg-icons@^6.7.2",
-    "universal-cookie@^7.2.2",
 ]
 
 for mfe in indigo_styled_mfes:
@@ -175,13 +208,54 @@ for mfe in indigo_styled_mfes:
         [
             (
                 f"mfe-dockerfile-post-npm-install-{mfe}",
-                """
-RUN npm install '@edx/brand@github:@TitanEd/tels-brand-openedx#native-plus-template-b-tels-brand-openedx'
-RUN npm install {deps}
-""".format(deps=" ".join(f"'{dep}'" for dep in MARKETING_CHROME_NPM_DEPS)),  # noqa: E501
+                "RUN npm install '@edx/brand@github:@TitanEd/tels-brand-openedx#native-plus-template-b-tels-brand-openedx'",  # noqa: E501
             ),
         ]
     )
+
+# Include js file in lms main.html, main_django.html, and certificate.html
+# (indigo/js/dark-theme.js — ships from the tels-theme repo's own theme
+# root, same as Template A; not part of this plugin's templates/ dir).
+
+hooks.Filters.ENV_PATCHES.add_items(
+    [
+        # for production
+        (
+            "openedx-common-assets-settings",
+            """
+javascript_files = ['base_application', 'application', 'certificates_wv']
+dark_theme_filepath = ['indigo/js/dark-theme.js']
+
+for filename in javascript_files:
+    if filename in PIPELINE['JAVASCRIPT']:
+        PIPELINE['JAVASCRIPT'][filename]['source_filenames'] += dark_theme_filepath
+""",
+        ),
+        # for development
+        (
+            "openedx-lms-development-settings",
+            """
+javascript_files = ['base_application', 'application', 'certificates_wv']
+dark_theme_filepath = ['indigo/js/dark-theme.js']
+
+for filename in javascript_files:
+    if filename in PIPELINE['JAVASCRIPT']:
+        PIPELINE['JAVASCRIPT'][filename]['source_filenames'] += dark_theme_filepath
+
+MFE_CONFIG['INDIGO_ENABLE_DARK_TOGGLE'] = {{ INDIGO_ENABLE_DARK_TOGGLE }}
+MFE_CONFIG['INDIGO_FOOTER_NAV_LINKS'] = {{ INDIGO_FOOTER_NAV_LINKS }}
+""",
+        ),
+        (
+            "openedx-lms-production-settings",
+            """
+MFE_CONFIG['INDIGO_ENABLE_DARK_TOGGLE'] = {{ INDIGO_ENABLE_DARK_TOGGLE }}
+MFE_CONFIG['INDIGO_FOOTER_NAV_LINKS'] = {{ INDIGO_FOOTER_NAV_LINKS }}
+""",
+        ),
+    ]
+)
+
 
 # Add react components and patches from tutor-indigo
 for path in itertools.chain(
@@ -194,17 +268,60 @@ for path in itertools.chain(
         hooks.Filters.ENV_PATCHES.add_item((os.path.basename(path), patch_file.read()))
 
 
-HEADER_CONTROLS_PLUGIN = """
-            {
-                op: PLUGIN_OPERATIONS.Insert,
-                widget: {
-                    id: 'indigo_header_controls',
-                    type: DIRECT_PLUGIN,
-                    priority: 1,
-                    RenderWidget: HeaderControls,
-                },
-            },
-"""
+# ---------------------------------------------------------------------------
+# Header + footer overrides
+#
+# Footer: hide native default_contents and insert IndigoFooter on footer.v1
+# (studio_footer.v1 for authoring). Same widget on every listed MFE.
+#
+# Header: insert CustomHeader on the host slot each MFE *actually mounts*.
+# Slot ids are not interchangeable — applying header_desktop.v1 to a
+# LearningHeader app (or header.v1 to an MFE that never mounts that slot)
+# silently no-ops. HEADER_REPLACEMENT_SLOTS is the source of truth.
+#
+#   public            empty HeaderSlot → header.v1 (insert only; no native default)
+#   account/profile/  native <Header /> → header_desktop.v1 + header_mobile.v1
+#   gradebook/        (Hide native default, insert CustomHeader on both so
+#   learner-dashboard  Paragon desktop/mobile breakpoints each show one bar)
+#   learning          HeaderSlot → header_learning.v1, plus desktop/mobile
+#                     for pages that still render plain <Header />
+#   discussions/      LearningHeader has no host slot in upstream git.
+#   communications/   Tutor wraps <Header /> at image build
+#   ora-grading       (mfe-dockerfile-pre-npm-build-*) so header_learning.v1 exists.
+#
+# Authn has no site header. Authoring / admin-console keep StudioHeader.
+# ---------------------------------------------------------------------------
+
+# Native <Header /> (DesktopHeaderSlot + MobileHeaderSlot inside
+# @edx/frontend-component-header). Hide default on both; CustomHeader has
+# its own 900px collapse so each viewport still shows one marketing bar.
+_DESKTOP_HEADER_SLOTS: list[tuple[str, bool, str]] = [
+    ("org.openedx.frontend.layout.header_desktop.v1", True, "custom_header_desktop"),
+    ("org.openedx.frontend.layout.header_mobile.v1", True, "custom_header_mobile"),
+]
+
+# LearningHeader host (learning MFE already ships HeaderSlot; discussions /
+# communications / ora-grading get the same slot via a Dockerfile wrap).
+_LEARNING_HEADER_SLOTS: list[tuple[str, bool, str]] = [
+    ("org.openedx.frontend.layout.header_learning.v1", True, "custom_header"),
+]
+
+# mfe -> [(slot_id, hide_native_default, widget_id)]
+HEADER_REPLACEMENT_SLOTS: dict[str, list[tuple[str, bool, str]]] = {
+    "public": [
+        ("org.openedx.frontend.layout.header.v1", False, "custom_header"),
+    ],
+    "account": _DESKTOP_HEADER_SLOTS,
+    "profile": _DESKTOP_HEADER_SLOTS,
+    "gradebook": _DESKTOP_HEADER_SLOTS,
+    "learner-dashboard": _DESKTOP_HEADER_SLOTS,
+    "learning": _LEARNING_HEADER_SLOTS + _DESKTOP_HEADER_SLOTS,
+    "discussions": _LEARNING_HEADER_SLOTS,
+    "communications": _LEARNING_HEADER_SLOTS,
+    "ora-grading": _LEARNING_HEADER_SLOTS,
+}
+
+HEADER_STYLED_MFES = list(HEADER_REPLACEMENT_SLOTS)
 
 FOOTER_PLUGINS = """
             {
@@ -220,36 +337,39 @@ FOOTER_PLUGINS = """
                     RenderWidget: IndigoFooter,
                 },
             },
+            {
+                op: PLUGIN_OPERATIONS.Insert,
+                widget: {
+                    id: 'read_theme_cookie',
+                    type: DIRECT_PLUGIN,
+                    priority: 2,
+                    RenderWidget: AddDarkTheme,
+                },
+            },
 """
 
-# Full marketing header (public / catalog HeaderSlot). No search bar/logic —
-# product decision for this template.
-#
-# Real slot ids (verified against frontend-component-header's own
-# src/plugin-slots/README.md + DesktopHeaderSlot/MobileHeaderSlot READMEs):
-#   org.openedx.frontend.layout.header_desktop.v1  (alias desktop_header_slot)
-#   org.openedx.frontend.layout.header_mobile.v1   (alias mobile_header_slot)
-# NOTE: 'org.openedx.frontend.layout.header.v1' (previously used here) is NOT
-# a real slot — it's frontend-plugin-framework's own naming-convention ADR
-# using it purely as "this fictitious slot name" to illustrate the reverse-DNS
-# scheme. No MFE implements it, so TelsHeader never actually mounted before
-# this fix. Also add the Hide-default-contents step (FOOTER_PLUGINS already
-# did this correctly) so TelsHeader replaces the stock header instead of
-# rendering alongside it.
-TELS_HEADER_PLUGINS = """
+
+def _custom_header_plugins(widget_id: str, hide_default: bool) -> str:
+    """Insert CustomHeader. Hide native default_contents only when the slot
+    already has a header (empty public HeaderSlot must not Hide — there is
+    nothing to hide, and Hide-without-default is how the bar disappeared).
+    """
+    hide = """
             {
                 op: PLUGIN_OPERATIONS.Hide,
                 widgetId: 'default_contents',
             },
-            {
+""" if hide_default else ""
+    return f"""{hide}
+            {{
                 op: PLUGIN_OPERATIONS.Insert,
-                widget: {
-                    id: 'tels_header',
+                widget: {{
+                    id: '{widget_id}',
                     type: DIRECT_PLUGIN,
                     priority: 1,
-                    RenderWidget: TelsHeader,
-                },
-            },
+                    RenderWidget: CustomHeader,
+                }},
+            }},
 """
 
 
@@ -257,112 +377,90 @@ def _add_footer(mfe: str, slot: str = "org.openedx.frontend.layout.footer.v1") -
     PLUGIN_SLOTS.add_item((mfe, slot, FOOTER_PLUGINS))
 
 
-def _add_tels_header(mfe: str) -> None:
-    PLUGIN_SLOTS.add_item((mfe, "org.openedx.frontend.layout.header_desktop.v1", TELS_HEADER_PLUGINS))
-    PLUGIN_SLOTS.add_item((mfe, "org.openedx.frontend.layout.header_mobile.v1", TELS_HEADER_PLUGINS))
+def _add_custom_header_slots(mfe: str) -> None:
+    for slot_id, hide_default, widget_id in HEADER_REPLACEMENT_SLOTS[mfe]:
+        PLUGIN_SLOTS.add_item(
+            (mfe, slot_id, _custom_header_plugins(widget_id, hide_default))
+        )
 
 
-def _add_header_controls_slots(mfe: str) -> None:
-    """
-    Language + dark-mode in header for logged-in AND logged-out users.
+for mfe in HEADER_STYLED_MFES:
+    _add_footer(mfe)
+    _add_custom_header_slots(mfe)
 
-    Desktop secondary menu is only rendered when logged in, so also inject into
-    the logged-out items slot. Same idea for mobile.
-    """
-    for slot in (
-        "desktop_secondary_menu_slot",
-        "desktop_logged_out_items_slot",
-        "mobile_logged_out_items_slot",
-        "org.openedx.frontend.layout.header_mobile_user_menu_trigger.v1",
-    ):
-        PLUGIN_SLOTS.add_item((mfe, slot, HEADER_CONTROLS_PLUGIN))
+# authoring (Studio) has its own header, unrelated to
+# @edx/frontend-component-header — only its footer slot is shared.
+_add_footer("authoring", "org.openedx.frontend.layout.studio_footer.v1")
 
 
-# LOW priority so catalog/public (added by other Tutor plugins) are present.
-@MFE_APPS.add(priority=hooks.priorities.LOW)  # type: ignore
-def _add_header_language_and_dark_mode(
-    mfes: dict[str, MFE_ATTRS_TYPE],
-) -> dict[str, MFE_ATTRS_TYPE]:
-    """Attach language dropdown + dark-mode switch to every registered MFE."""
-    for mfe in mfes:
-        name = str(mfe)
+# LearningHeader apps do not mount header_learning.v1 in upstream source.
+# Wrap their <Header /> at image build (after COPY of MFE src) so PLUGIN_SLOTS
+# can hide the native header and insert CustomHeader — no MFE git changes.
+LEARNING_HEADER_WRAP_FILES = {
+    "discussions": "src/discussions/discussions-home/DiscussionsHome.jsx",
+    "communications": "src/components/page-container/PageContainer.jsx",
+    "ora-grading": "src/App.jsx",
+}
 
-        # Catalog: TelsHeader via HeaderSlot (PluginSlot host in catalog App).
-        if name == "catalog":
-            _add_tels_header(name)
-            _add_footer(name)
-            continue
 
-        # Public: TelsHeader via HeaderSlot + env.config.jsx (local npm start).
-        if name == "public":
-            _add_tels_header(name)
-            _add_footer(name)
-            continue
-
-        # LearningHeader MFEs (learning + discussions) use learning_* slots,
-        # not desktop_secondary_menu_slot from the standard site header.
-        if name in ("learning", "discussions"):
-            PLUGIN_SLOTS.add_items(
-                [
-                    (
-                        name,
-                        "learning_help_slot",
-                        """
-        {
-            op: PLUGIN_OPERATIONS.Hide,
-            widgetId: 'default_contents',
-        },
+def _learning_header_wrap_dockerfile(relpath: str) -> str:
+    path_js = json.dumps(relpath)
+    return f"""
+RUN node <<'EOF'
+const fs = require('fs');
+const p = {path_js};
+let t = fs.readFileSync(p, 'utf8');
+if (t.includes('org.openedx.frontend.layout.header_learning.v1')) {{
+  process.exit(0);
+}}
+const headerImport = "import {{ LearningHeader as Header }} from '@edx/frontend-component-header';";
+if (!t.includes(headerImport)) {{
+  console.error('CustomHeader wrap: LearningHeader import not found in', p);
+  process.exit(1);
+}}
+if (!t.includes('@openedx/frontend-plugin-framework')) {{
+  t = t.replace(
+    headerImport,
+    "import {{ PluginSlot }} from '@openedx/frontend-plugin-framework';\\n" + headerImport
+  );
+}}
+const wrapped = t.replace(
+  /<Header([\\s\\S]*?)\\/>/,
+  '<PluginSlot id="org.openedx.frontend.layout.header_learning.v1"><Header$1/></PluginSlot>'
+);
+if (wrapped === t) {{
+  console.error('CustomHeader wrap: <Header /> not found in', p);
+  process.exit(1);
+}}
+fs.writeFileSync(p, wrapped);
+console.log('Wrapped LearningHeader in', p);
+EOF
 """
-                        + HEADER_CONTROLS_PLUGIN,
-                    ),
-                    (
-                        name,
-                        "learning_logged_out_items_slot",
-                        HEADER_CONTROLS_PLUGIN,
-                    ),
-                ]
-            )
-            _add_footer(name)
-            continue
-
-        if name == "authoring":
-            PLUGIN_SLOTS.add_items(
-                [
-                    (
-                        "authoring",
-                        "org.openedx.frontend.layout.studio_header_search_button_slot.v1",
-                        HEADER_CONTROLS_PLUGIN,
-                    ),
-                ]
-            )
-            _add_footer("authoring", "org.openedx.frontend.layout.studio_footer.v1")
-            continue
-
-        # Standard Header (catalog, account, profile, learner-dashboard, …)
-        _add_header_controls_slots(name)
-        _add_footer(name)
-
-    return mfes
 
 
-# Local design-token CSS from: cd tels-brand-openedx && npm run serve
-# Use localhost (not 0.0.0.0) — browsers load these URLs.
-#
-# CRITICAL: `default` must be full Paragon theme CSS (layout utilities like
-# .d-flex). `brandOverride` is ONLY our token/CSS layer. Pointing both at
-# localhost:3000 replaces Paragon with brand-only CSS → unstyled MFEs.
-PARAGON_VERSION = "23.14.9"
-PARAGON_CDN = f"https://cdn.jsdelivr.net/npm/@openedx/paragon@{PARAGON_VERSION}/dist"
+for _mfe, _relpath in LEARNING_HEADER_WRAP_FILES.items():
+    hooks.Filters.ENV_PATCHES.add_item(
+        (f"mfe-dockerfile-pre-npm-build-{_mfe}", _learning_header_wrap_dockerfile(_relpath))
+    )
 
-# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and
-# "deployed" (same switch as the native-plus-template-a branch).
+
+# TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development" and "deployed".
 # Switch here ↓
 BRAND_THEME_SOURCE = "deployed"  # "development" | "deployed"
 
+# `default` = full Paragon CSS; `brandOverride` = TitanEd tokens (Template B / public).
+PARAGON_VERSION = "23.14.9"
+PARAGON_CDN = f"https://cdn.jsdelivr.net/npm/@openedx/paragon@{PARAGON_VERSION}/dist"
+
 BRAND_THEME_DEVELOPMENT = "http://localhost:3000"
+# NOT raw.githubusercontent.com (Template A's URL, branch swapped) — verified
+# broken: `curl -sI .../dist/core.min.css` returns `content-type: text/plain`
+# + `x-content-type-options: nosniff`, so browsers refuse to apply it as a
+# stylesheet. jsDelivr mirrors the same repo/branch/path and serves the
+# correct content-type.
 BRAND_THEME_DEPLOYED = (
-    "https://raw.githubusercontent.com/TitanEd/tels-brand-openedx/"
-    "refs/heads/native-plus-template-b-tels-brand-openedx/dist"
+    "https://cdn.jsdelivr.net/gh/TitanEd/tels-brand-openedx"
+    "@native-plus-template-b-tels-brand-openedx/dist"
 )
 
 BRAND_THEME_BASES = {

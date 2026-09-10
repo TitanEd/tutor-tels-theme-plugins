@@ -3,4 +3,4 @@
 {{- patch("ToggleThemeButton.jsx") }}
 {{- patch("LanguageMenu.jsx") }}
 {{- patch("HeaderControls.jsx") }}
-{{- patch("TelsHeader.jsx") }}
+{{- patch("CustomHeader.jsx") }}
