@@ -203,34 +203,34 @@ indigo_styled_mfes = [
     "public",
 ]
 
-# env.config.jsx (Imports.jsx patch) is baked into EVERY styled MFE's image
-# and unconditionally imports these packages for the shared CustomHeader /
-# IndigoFooter / HeaderControls / LanguageMenu bundle. Not every upstream MFE
-# repo declares them (e.g. public, authoring, discussions, gradebook,
-# learning have none of these in package.json), so `npm run build` fails
-# with "Module not found" for those apps and the whole `tutor images build
-# mfe` aborts — reproduced for real: public-prod failed on exactly this,
-# missing @fortawesome/free-solid-svg-icons/faBars etc. (CustomHeader.jsx's
-# subject mega-menu icons — Template A's simpler header doesn't need these,
-# which is why Template A's plugin.py doesn't have this block). Install them
-# explicitly for every MFE that gets the shared bundle, regardless of what
-# its own package.json already has.
-MARKETING_CHROME_NPM_DEPS = [
-    "@fortawesome/react-fontawesome@^0.2.6",
-    "@fortawesome/free-brands-svg-icons@^6.7.2",
-    "@fortawesome/free-solid-svg-icons@^6.7.2",
-    "universal-cookie@^7.2.2",
-]
+# Template A does not extra-install FontAwesome in this plugin: its public
+# MFE package.json already lists the same @fortawesome/* packages, so
+# `npm clean-install` puts faBars etc. on disk before webpack compiles
+# env.config.jsx. Template B's public MFE dropped those deps (lucide-react
+# for in-app icons) while Imports.jsx still pulls CustomHeader's FA icons,
+# which is the public-prod "Can't resolve '@fortawesome/free-solid-svg-icons/faBars'"
+# failure. Same versions as Template A's public package.json, on the same
+# RUN as @edx/brand (Tutor indigo / Template A patch shape: one RUN).
+_BRAND_NPM = (
+    "'@edx/brand@github:@TitanEd/tels-brand-openedx"
+    "#native-plus-template-b-tels-brand-openedx'"
+)
+_CHROME_NPM = " ".join(
+    [
+        "'@fortawesome/fontawesome-svg-core@1.2.36'",
+        "'@fortawesome/free-brands-svg-icons@5.15.4'",
+        "'@fortawesome/free-regular-svg-icons@5.15.4'",
+        "'@fortawesome/free-solid-svg-icons@5.15.4'",
+        "'@fortawesome/react-fontawesome@0.2.6'",
+    ]
+)
 
 for mfe in indigo_styled_mfes:
     hooks.Filters.ENV_PATCHES.add_items(
         [
             (
                 f"mfe-dockerfile-post-npm-install-{mfe}",
-                """
-RUN npm install '@edx/brand@github:@TitanEd/tels-brand-openedx#native-plus-template-b-tels-brand-openedx'
-RUN npm install {deps}
-""".format(deps=" ".join(f"'{dep}'" for dep in MARKETING_CHROME_NPM_DEPS)),  # noqa: E501
+                f"RUN npm install {_BRAND_NPM} {_CHROME_NPM}",
             ),
         ]
     )
