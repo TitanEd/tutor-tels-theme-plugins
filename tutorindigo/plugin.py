@@ -453,14 +453,9 @@ PARAGON_VERSION = "23.14.9"
 PARAGON_CDN = f"https://cdn.jsdelivr.net/npm/@openedx/paragon@{PARAGON_VERSION}/dist"
 
 BRAND_THEME_DEVELOPMENT = "http://localhost:3000"
-# NOT raw.githubusercontent.com (Template A's URL, branch swapped) — verified
-# broken: `curl -sI .../dist/core.min.css` returns `content-type: text/plain`
-# + `x-content-type-options: nosniff`, so browsers refuse to apply it as a
-# stylesheet. jsDelivr mirrors the same repo/branch/path and serves the
-# correct content-type.
 BRAND_THEME_DEPLOYED = (
-    "https://cdn.jsdelivr.net/gh/TitanEd/tels-brand-openedx"
-    "@native-plus-template-b-tels-brand-openedx/dist"
+    "https://raw.githubusercontent.com/TitanEd/tels-brand-openedx/"
+    "refs/heads/native-plus-template-b-tels-brand-openedx/dist"
 )
 
 BRAND_THEME_BASES = {
