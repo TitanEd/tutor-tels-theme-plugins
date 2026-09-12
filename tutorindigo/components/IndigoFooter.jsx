@@ -1,4 +1,5 @@
 const DEFAULT_LINKS = [
+  { titleKey: 'home', url: '/' },
   { titleKey: 'privacy', url: '/privacy' },
   { titleKey: 'terms', url: '/terms' },
   { titleKey: 'about', url: '/about' },
@@ -38,6 +39,7 @@ const indigoFooterMessages = defineMessages({
     defaultMessage: 'Footer Links',
     description: 'Screen-reader-only heading for the footer legal-links column (matches the live pll.harvard.edu markup, which hides this heading visually)',
   },
+  home: { id: 'indigo.footer.link.home', defaultMessage: 'Home', description: 'Footer Home link (public MFE)' },
   privacy: { id: 'indigo.footer.link.privacy', defaultMessage: 'Privacy Policy', description: 'Footer Privacy Policy link' },
   terms: { id: 'indigo.footer.link.terms', defaultMessage: 'Terms of Use', description: 'Footer Terms of Use link' },
   about: { id: 'indigo.footer.link.about', defaultMessage: 'About Us', description: 'Footer About Us link' },
@@ -54,8 +56,8 @@ const IndigoFooter = () => {
   const links = (config.INDIGO_FOOTER_EXPLORE_LINKS || DEFAULT_LINKS)
     .filter((link) => !isHiddenFooterLink(link));
 
-  const catalogUrl = resolvePublicMfeUrl('/catalog', config);
-  const resolveUrl = (url) => resolvePublicMfeUrl(url, config);
+  const homeUrl = publicHomeHref(config);
+  const coursesUrl = resolvePublicMfeUrl('/courses', config);
 
   const linkLabel = (link) => {
     if (link.titleKey && indigoFooterMessages[link.titleKey]) {
@@ -68,7 +70,7 @@ const IndigoFooter = () => {
     <footer className="tels-footer" role="contentinfo">
       <div className="tels-container tels-footer__top">
         <div>
-          <a href={catalogUrl} className="tels-btn tels-btn--primary">
+          <a href={coursesUrl} className="tels-btn tels-btn--primary">
             {intl.formatMessage(indigoFooterMessages.exploreCoursesCta)}
           </a>
         </div>
@@ -78,7 +80,7 @@ const IndigoFooter = () => {
           <ul>
             {links.map((link) => (
               <li key={`${link.url}-${link.titleKey || link.title}`}>
-                <a href={resolveUrl(link.url)}>{linkLabel(link)}</a>
+                <a href={resolveFooterHref(link, config)}>{linkLabel(link)}</a>
               </li>
             ))}
           </ul>
@@ -86,7 +88,9 @@ const IndigoFooter = () => {
 
         <div className="tels-footer__brand">
           <div className="tels-footer__logo">
-            <img src={logoUrl} alt={siteName} />
+            <a href={homeUrl} aria-label={siteName}>
+              <img src={logoUrl} alt={siteName} />
+            </a>
           </div>
         </div>
       </div>

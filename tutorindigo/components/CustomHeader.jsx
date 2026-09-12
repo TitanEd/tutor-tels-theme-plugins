@@ -8,9 +8,9 @@
  * home hero until the user scrolls. Hamburger opens a "Browse by Subject
  * Area" mega-menu; centered logo. No search bar/logic (product decision).
  * "View all courses" (left, next to the hamburger) is a filter-reset
- * control, not a nav link — only rendered on the catalog listing page while
- * a filter is applied (i.e. the URL has a query string), and points at the
- * bare catalog URL so clicking it drops every filter.
+ * control, not a nav link — only rendered on the courses listing page while
+ * a filter is applied (i.e. the URL has a query string), and points at
+ * /courses so clicking it drops every filter.
  * Styles: tels-brand-openedx .tels-header* / .tels-btn* (tokens only).
  */
 
@@ -147,6 +147,20 @@ const SUBJECT_MESSAGE_KEY = {
   Theology: 'theology',
 };
 
+/** In-app NavLink on the public MFE; full page <a> everywhere else (cross-port).
+ *  href is the real browser URL (/public, /public/courses?subject=…).
+ *  NavLink gets the basename-relative path so it never becomes /public/public. */
+const ChromeLink = ({ href, className, children, ...rest }) => {
+  const inPublicApp = process.env.APP_ID === 'public';
+  if (inPublicApp && href && !href.startsWith('//')) {
+    const to = toPublicAppPath(href);
+    if (to && !to.startsWith('http://') && !to.startsWith('https://')) {
+      return <NavLink to={to} className={className} {...rest}>{children}</NavLink>;
+    }
+  }
+  return <a href={href} className={className} {...rest}>{children}</a>;
+};
+
 const CustomHeader = () => {
   const intl = useIntl();
   const config = getConfig();
@@ -157,21 +171,18 @@ const CustomHeader = () => {
   const siteName = config.SITE_NAME || 'TitanEd';
   const logoUrl = config.LOGO_URL || `${config.LMS_BASE_URL}/theming/asset/images/logo.png`;
 
-  const homeUrl = config.INDIGO_HOME_URL || config.MARKETING_SITE_BASE_URL || config.BASE_URL || '/public/';
-  const coursesUrl = config.INDIGO_COURSES_URL || `${String(homeUrl).replace(/\/$/, '')}/courses`;
-  const catalogUrl = config.INDIGO_CATALOG_URL || `${String(homeUrl).replace(/\/$/, '')}/catalog`;
-
   const isPublicMfe = process.env.APP_ID === 'public';
+  const homeUrl = publicHomeHref(config);
+  const coursesUrl = resolvePublicMfeUrl('/courses', config);
+
   const pathname = location?.pathname || '';
   const isHome = isPublicMfe && (pathname === '/' || pathname === '');
 
-  // "View all courses" only appears on the catalog listing page, and only
+  // "View all courses" only appears on the courses listing page, and only
   // once a filter is actually applied — it's a reset control, not general
-  // nav. Linking to the bare catalog URL (no query string) is the reset:
-  // the catalog page reads its filters from the query string, so landing
-  // there with none applied shows every course again.
-  const hasActiveCatalogFilters = isPublicMfe
-    && pathname.startsWith('/catalog')
+  // nav. Linking to the bare courses URL (no query string) is the reset.
+  const hasActiveCourseFilters = isPublicMfe
+    && pathname.startsWith('/courses')
     && !!(location?.search && location.search.length > 1);
 
   useEffect(() => {
@@ -209,20 +220,20 @@ const CustomHeader = () => {
               >
                 <FontAwesomeIcon icon={menuOpen ? faTimes : faBars} />
               </button>
-              {hasActiveCatalogFilters && (
-                <NavLink to={catalogUrl.startsWith('http') ? undefined : catalogUrl} className="tels-header__view-all">
+              {hasActiveCourseFilters && (
+                <ChromeLink href={coursesUrl} className="tels-header__view-all">
                   {intl.formatMessage(customHeaderMessages.viewAllCourses)}
-                </NavLink>
+                </ChromeLink>
               )}
             </div>
 
-            <NavLink
-              to={homeUrl.startsWith('http') ? undefined : homeUrl}
+            <a
+              href={homeUrl}
               className="tels-header__logo"
               aria-label={intl.formatMessage(customHeaderMessages.homeAria, { siteName })}
             >
               <img src={logoUrl} alt={siteName} />
-            </NavLink>
+            </a>
           </div>
         </div>
       </header>
@@ -240,8 +251,8 @@ const CustomHeader = () => {
             <ul className="tels-header__subjects">
               {SUBJECTS.map((subject) => (
                 <li key={subject}>
-                  <NavLink
-                    to={`${catalogUrl}?subject=${encodeURIComponent(subject)}`}
+                  <ChromeLink
+                    href={publicCoursesHref(config, { subject })}
                     className="tels-header__subject-link"
                     onClick={closeMenu}
                     tabIndex={menuOpen ? 0 : -1}
@@ -250,7 +261,7 @@ const CustomHeader = () => {
                     <span>
                       {intl.formatMessage(customHeaderMessages[SUBJECT_MESSAGE_KEY[subject]])}
                     </span>
-                  </NavLink>
+                  </ChromeLink>
                 </li>
               ))}
             </ul>

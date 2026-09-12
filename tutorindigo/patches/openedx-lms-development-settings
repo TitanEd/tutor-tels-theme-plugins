@@ -4,3 +4,20 @@ dark_theme_filepath = ['indigo/js/dark-theme.js']
 for filename in javascript_files:
     if filename in PIPELINE['JAVASCRIPT']:
         PIPELINE['JAVASCRIPT'][filename]['source_filenames'] += dark_theme_filepath
+
+# tutor dev: each MFE is on its own port (public :2024, learning :2000, …).
+# Relative /public from another MFE hits the wrong origin. Point marketing
+# chrome at the public MFE origin so header/footer links work.
+{% set ns = namespace(public_port=2024) %}
+{% for name, app in iter_mfes() %}
+{% if name == "public" %}
+{% set ns.public_port = app["port"] %}
+{% endif %}
+{% endfor %}
+{% set indigo_public_origin = ("https" if ENABLE_HTTPS else "http") ~ "://" ~ MFE_HOST ~ ":" ~ (ns.public_port|string) ~ "/public" %}
+MFE_CONFIG['INDIGO_HOME_URL'] = "{{ indigo_public_origin }}/"
+MFE_CONFIG['INDIGO_COURSES_URL'] = "{{ indigo_public_origin }}/courses"
+MFE_CONFIG['INDIGO_ABOUT_URL'] = "{{ indigo_public_origin }}/about"
+MFE_CONFIG['INDIGO_CONTACT_URL'] = "{{ indigo_public_origin }}/contact"
+MFE_CONFIG['INDIGO_PRIVACY_URL'] = "{{ indigo_public_origin }}/privacy"
+MFE_CONFIG['INDIGO_TERMS_URL'] = "{{ indigo_public_origin }}/terms"

@@ -1,2 +1,27 @@
 MFE_CONFIG['INDIGO_ENABLE_DARK_TOGGLE'] = {{ INDIGO_ENABLE_DARK_TOGGLE }}
 MFE_CONFIG['INDIGO_FOOTER_NAV_LINKS'] = {{ INDIGO_FOOTER_NAV_LINKS }}
+MFE_CONFIG['INDIGO_FOOTER_EXPLORE_LINKS'] = {{ INDIGO_FOOTER_EXPLORE_LINKS }}
+{# Public MFE mount is /public. Courses listing is /public/courses.
+   Caddy / production: https://{{ MFE_HOST }}/public
+   tutor dev (no proxy): http://{{ MFE_HOST }}:{{ port }}/public
+   A full INDIGO_HOME_URL (http…) wins if operators set one. #}
+{% set ns = namespace(public_port=2024) %}
+{% for name, app in iter_mfes() %}
+{% if name == "public" %}
+{% set ns.public_port = app["port"] %}
+{% endif %}
+{% endfor %}
+{% set indigo_scheme = "https" if ENABLE_HTTPS else "http" %}
+{% if INDIGO_HOME_URL is string and INDIGO_HOME_URL.startswith("http") %}
+{% set indigo_public_origin = INDIGO_HOME_URL.rstrip("/") %}
+{% elif ENABLE_WEB_PROXY %}
+{% set indigo_public_origin = indigo_scheme ~ "://" ~ MFE_HOST ~ "/public" %}
+{% else %}
+{% set indigo_public_origin = indigo_scheme ~ "://" ~ MFE_HOST ~ ":" ~ (ns.public_port|string) ~ "/public" %}
+{% endif %}
+MFE_CONFIG['INDIGO_HOME_URL'] = "{{ indigo_public_origin }}/"
+MFE_CONFIG['INDIGO_COURSES_URL'] = "{{ indigo_public_origin }}/courses"
+MFE_CONFIG['INDIGO_ABOUT_URL'] = "{{ indigo_public_origin }}/about"
+MFE_CONFIG['INDIGO_CONTACT_URL'] = "{{ indigo_public_origin }}/contact"
+MFE_CONFIG['INDIGO_PRIVACY_URL'] = "{{ indigo_public_origin }}/privacy"
+MFE_CONFIG['INDIGO_TERMS_URL'] = "{{ indigo_public_origin }}/terms"
