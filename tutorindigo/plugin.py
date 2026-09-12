@@ -38,15 +38,9 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         ],
         # Marketing footer columns — shown on every MFE (IndigoFooter).
         # titleKey maps to indigo.footer.link.* intl messages in IndigoFooter.jsx.
-        # NOTE: kept at Template B's own working values (privacy/terms/about/
-        # contact), NOT copied from Template A's (home/courses/about/contact) —
-        # IndigoFooter.jsx's own indigoFooterMessages dict here only has
-        # message ids for privacy/terms/about/contact. Copying Template A's
-        # literal values would render "home"/"courses" as raw untranslated
-        # text (linkLabel()'s fallback) instead of breaking anything at parse
-        # time — a real visible regression, not a config-shape mismatch. Fix
-        # together with IndigoFooter.jsx if you want Template A's exact set.
+        # Home first (public MFE), then legal / about / contact.
         "FOOTER_EXPLORE_LINKS": [
+            {"titleKey": "home", "url": "/"},
             {"titleKey": "privacy", "url": "/privacy"},
             {"titleKey": "terms", "url": "/terms"},
             {"titleKey": "about", "url": "/about"},
@@ -112,7 +106,7 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         #   tutor config save --set 'INDIGO_HOME_URL="https://learn.example.com"'
         # COURSES_URL: public MFE /public/courses (search submits here with ?q=).
         # LEARNER_DASHBOARD_URL is usually set by Tutor MFE; override if needed.
-        "HOME_URL": "/public",
+        "HOME_URL": "/public/",
         "COURSES_URL": "/public/courses",
         "ABOUT_URL": "/public/about",
         "CONTACT_URL": "/public/contact",

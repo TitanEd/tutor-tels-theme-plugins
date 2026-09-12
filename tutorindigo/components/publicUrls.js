@@ -1,10 +1,9 @@
-/** Tutor default public MFE mount (PUBLIC_PATH=/public). */
+/** Public MFE mount. The home/base URL already ends with this (…/public). */
 const PUBLIC_MFE_MOUNT = '/public';
 
 const ROUTE_CONFIG_KEYS = {
   '/': 'INDIGO_HOME_URL',
   '/home': 'INDIGO_HOME_URL',
-  '/catalog': 'INDIGO_CATALOG_URL',
   '/courses': 'INDIGO_COURSES_URL',
   '/about': 'INDIGO_ABOUT_URL',
   '/contact': 'INDIGO_CONTACT_URL',
@@ -14,11 +13,10 @@ const ROUTE_CONFIG_KEYS = {
   '/eea-privacy-disclosures': 'INDIGO_EEA_URL',
 };
 
-/** Marketing route path per header/footer urlKey. */
+/** App routes only — no /public prefix. Origin already has it. */
 const PUBLIC_ROUTE_BY_KEY = {
   home: '/',
-  catalog: '/catalog',
-  courses: '/catalog',
+  courses: '/courses',
   about: '/about',
   contact: '/contact',
   accessibility: '/accessibility',
@@ -31,77 +29,180 @@ function isSiteRoot(value) {
   return !value || value === '/' || value === '';
 }
 
-/** Resolve the public MFE mount segment (e.g. /public). */
-function getPublicMfeMount(config) {
-  const home = config.INDIGO_HOME_URL;
-  if (!isSiteRoot(home)) {
-    return String(home).replace(/\/$/, '') || PUBLIC_MFE_MOUNT;
-  }
-
-  const catalog = config.INDIGO_CATALOG_URL;
-  if (typeof catalog === 'string' && catalog.includes('/catalog')) {
-    const base = catalog.replace(/\/catalog\/?$/, '');
-    if (base && !isSiteRoot(base)) {
-      return base;
-    }
-  }
-
-  return PUBLIC_MFE_MOUNT;
+function isAbsoluteUrl(value) {
+  return typeof value === 'string'
+    && (value.startsWith('http://') || value.startsWith('https://'));
 }
 
-/** Ensure a relative path lives under the public MFE mount. */
-function ensurePublicMfePath(path, mount = PUBLIC_MFE_MOUNT) {
-  if (path.startsWith('http://') || path.startsWith('https://')) {
-    return path;
+function stripTrailingSlash(value) {
+  const text = String(value || '');
+  if (text === '/') {
+    return '/';
   }
+  return text.replace(/\/$/, '');
+}
 
-  const m = (mount || PUBLIC_MFE_MOUNT).replace(/\/$/, '') || PUBLIC_MFE_MOUNT;
-  const p = path.startsWith('/') ? path : `/${path}`;
+function splitHref(url) {
+  if (!url) {
+    return { path: '/', search: '', hash: '' };
+  }
+  const hashIdx = url.indexOf('#');
+  const withoutHash = hashIdx === -1 ? url : url.slice(0, hashIdx);
+  const hash = hashIdx === -1 ? '' : url.slice(hashIdx);
+  const qIdx = withoutHash.indexOf('?');
+  const path = qIdx === -1 ? withoutHash : withoutHash.slice(0, qIdx);
+  const search = qIdx === -1 ? '' : withoutHash.slice(qIdx);
+  return { path: path || '/', search, hash };
+}
 
-  if (p === m || p === `${m}/`) {
-    return `${m}/`;
+/** Collapse /public/public → /public and /public/public/about → /public/about. */
+function collapseDoubledMount(pathname) {
+  let p = pathname || '/';
+  const doubled = `${PUBLIC_MFE_MOUNT}${PUBLIC_MFE_MOUNT}`;
+  while (p === doubled || p.startsWith(`${doubled}/`)) {
+    p = `${PUBLIC_MFE_MOUNT}${p.slice(doubled.length)}` || PUBLIC_MFE_MOUNT;
   }
-  if (p.startsWith(`${m}/`)) {
-    return p;
-  }
-  if (p === '/') {
-    return `${m}/`;
-  }
-  return `${m}${p}`;
+  return p || '/';
 }
 
 /**
- * Resolve marketing paths to the public MFE (e.g. /catalog → /public/catalog).
- * Uses INDIGO_*_URL when set; always normalizes away bare site-root paths.
+ * Basename-relative route. Strips every /public prefix because the router
+ * basename / home origin already includes it.
+ */
+function toPublicAppPath(href) {
+  if (!href) {
+    return '/';
+  }
+  if (isAbsoluteUrl(href)) {
+    try {
+      const parsed = new URL(href);
+      return toPublicAppPath(`${parsed.pathname}${parsed.search}${parsed.hash}`);
+    } catch (err) {
+      return href;
+    }
+  }
+  const { path, search, hash } = splitHref(href);
+  let appPath = collapseDoubledMount(path.replace(/\/$/, '') || '/');
+  while (appPath === PUBLIC_MFE_MOUNT || appPath.startsWith(`${PUBLIC_MFE_MOUNT}/`)) {
+    appPath = appPath === PUBLIC_MFE_MOUNT
+      ? '/'
+      : (appPath.slice(PUBLIC_MFE_MOUNT.length) || '/');
+  }
+  if (!appPath.startsWith('/')) {
+    appPath = `/${appPath}`;
+  }
+  return `${appPath}${search}${hash}`;
+}
+
+/**
+ * Public MFE origin. INDIGO_HOME_URL is already
+ * http://apps.local.openedx.io:2024/public — do not append /public again.
+ */
+function getPublicOrigin(config) {
+  const home = config && config.INDIGO_HOME_URL;
+  if (isAbsoluteUrl(home)) {
+    try {
+      const parsed = new URL(home);
+      const path = collapseDoubledMount(parsed.pathname.replace(/\/$/, '') || PUBLIC_MFE_MOUNT);
+      const mount = path === '/' ? PUBLIC_MFE_MOUNT : path;
+      return stripTrailingSlash(`${parsed.origin}${mount.startsWith('/') ? mount : `/${mount}`}`);
+    } catch (err) {
+      return stripTrailingSlash(home);
+    }
+  }
+  if (home && !isSiteRoot(home)) {
+    return collapseDoubledMount(stripTrailingSlash(home));
+  }
+  return PUBLIC_MFE_MOUNT;
+}
+
+function withHomeTrailingSlash(origin) {
+  const base = stripTrailingSlash(origin);
+  return `${base}/`;
+}
+
+function joinOnPublicOrigin(origin, appPath) {
+  const route = toPublicAppPath(appPath || '/');
+  const { path } = splitHref(route);
+  const base = stripTrailingSlash(origin);
+  if (path === '/') {
+    return `${base}/`;
+  }
+  if (base.endsWith(path)) {
+    return base;
+  }
+  return `${base}${path}`;
+}
+
+function collapseAbsolutePublicUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const pathname = collapseDoubledMount(parsed.pathname.replace(/\/$/, '') || '/');
+    const isHome = pathname === PUBLIC_MFE_MOUNT || pathname === '/';
+    if (isHome) {
+      return `${parsed.origin}${PUBLIC_MFE_MOUNT}/`;
+    }
+    return `${parsed.origin}${pathname}${parsed.search}${parsed.hash}`;
+  } catch (err) {
+    return stripTrailingSlash(url);
+  }
+}
+
+/**
+ * Real browser URL. Home is the origin as-is (already …/public).
+ * Other pages are origin + /courses, /about, … — never origin + /public/….
  */
 function resolvePublicMfeUrl(url, config) {
-  const mount = getPublicMfeMount(config);
-
-  if (!url) {
-    return `${mount}/`;
+  if (isAbsoluteUrl(url)) {
+    return collapseAbsolutePublicUrl(url);
   }
 
-  if (url.startsWith('http://') || url.startsWith('https://')) {
-    return url;
+  const { search, hash } = splitHref(url || '/');
+  const appPath = toPublicAppPath(url || '/');
+  const { path } = splitHref(appPath);
+  const origin = getPublicOrigin(config);
+
+  if (path === '/') {
+    return `${withHomeTrailingSlash(origin)}${search}${hash}`;
   }
 
-  const normalized = url === '/' ? '/' : url.replace(/\/$/, '') || '/';
-  const configKey = ROUTE_CONFIG_KEYS[normalized];
-  if (configKey && config[configKey]) {
+  const configKey = ROUTE_CONFIG_KEYS[path];
+  if (configKey && config && config[configKey]) {
     const configured = String(config[configKey]);
+    if (isAbsoluteUrl(configured)) {
+      return `${collapseAbsolutePublicUrl(configured)}${search}${hash}`;
+    }
     if (!isSiteRoot(configured)) {
-      return ensurePublicMfePath(configured, mount);
+      return `${joinOnPublicOrigin(origin, toPublicAppPath(configured))}${search}${hash}`;
     }
   }
 
-  if (url.startsWith('/')) {
-    return ensurePublicMfePath(url, mount);
-  }
-
-  return `${config.LMS_BASE_URL || ''}${url}`;
+  return `${joinOnPublicOrigin(origin, path)}${search}${hash}`;
 }
 
-/** Router pathname (basename-relative) for active nav styling inside the public MFE. */
+function publicHomeHref(config) {
+  return withHomeTrailingSlash(getPublicOrigin(config));
+}
+
+/** Footer item → origin + app route. titleKey is an app path, not /public/…. */
+function resolveFooterHref(link, config) {
+  const fromKey = link && link.titleKey && PUBLIC_ROUTE_BY_KEY[link.titleKey];
+  const raw = fromKey || (link && link.url) || '/';
+  return resolvePublicMfeUrl(raw, config);
+}
+
+function publicCoursesHref(config, query) {
+  const params = new URLSearchParams();
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value != null && value !== '') {
+      params.set(key, value);
+    }
+  });
+  const qs = params.toString();
+  const base = resolvePublicMfeUrl('/courses', config);
+  return qs ? `${base}?${qs}` : base;
+}
+
 function isPublicMfeNavActive(urlKey, pathname) {
   const path = pathname.replace(/\/$/, '') || '/';
 
@@ -116,4 +217,24 @@ function isPublicMfeNavActive(urlKey, pathname) {
 
   const normalized = routePath.replace(/\/$/, '');
   return path === normalized || path.startsWith(`${normalized}/`);
+}
+
+function getPublicMfeMount(config) {
+  const origin = getPublicOrigin(config);
+  if (isAbsoluteUrl(origin)) {
+    try {
+      return new URL(origin).pathname.replace(/\/$/, '') || PUBLIC_MFE_MOUNT;
+    } catch (err) {
+      return PUBLIC_MFE_MOUNT;
+    }
+  }
+  return origin || PUBLIC_MFE_MOUNT;
+}
+
+function ensurePublicMfePath(path, mount = PUBLIC_MFE_MOUNT) {
+  if (isAbsoluteUrl(path)) {
+    return collapseAbsolutePublicUrl(path);
+  }
+  const origin = collapseDoubledMount((mount || PUBLIC_MFE_MOUNT).replace(/\/$/, '') || PUBLIC_MFE_MOUNT);
+  return joinOnPublicOrigin(origin, toPublicAppPath(path));
 }
