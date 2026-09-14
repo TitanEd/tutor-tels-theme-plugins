@@ -45,6 +45,81 @@ Or, to set the primary color to forest green, run::
     # Note: The nested quotes are needed in order to handle the hash (#) correctly.
     tutor config save --set 'INDIGO_PRIMARY_COLOR="#225522"'
 
+Forked MFEs and custom Django plugin apps
+------------------------------------------
+
+This fork adds two more pieces of configuration on top of upstream Indigo, both in ``tutorindigo/plugin.py``, both designed so that adding the *next* forked MFE or custom Django app is a one-line dict entry — not a new Tutor plugin file or a hand-written Dockerfile patch.
+
+Forked / custom MFEs (``FORKED_MFE_APPS``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Some MFEs in this deployment aren't the stock ``openedx/frontend-app-*`` builds — they're TitanEd forks, or (for ``tels-public``) a brand-new MFE app entirely. They're all registered together via the ``FORKED_MFE_APPS`` dict near the top of ``tutorindigo/plugin.py``::
+
+    FORKED_MFE_APPS: dict[str, dict[str, str | int]] = {
+        "learning": {
+            "repository": "https://github.com/TitanEd/frontend-app-learning.git",
+            "port": 2000,
+            "version": "native-tels/ulmo.4",
+        },
+        "tels-public": {
+            "repository": "https://github.com/TitanEd/frontend-app-tels-public.git",
+            "port": 2024,
+            "version": "native-plus-template-a",
+        },
+    }
+
+This is registered with ``tutor-mfe`` via ``tutormfe.hooks.MFE_APPS.add()``, exactly like the ``@MFE_APPS.add()`` pattern used by any standalone "add my MFE" Tutor plugin — the difference is that every forked/custom MFE lives in this one place instead of one plugin file each.
+
+Each dict key is the MFE's app id:
+
+- To **replace** a stock MFE with a TitanEd fork (like ``learning`` above), reuse its existing app id.
+- To register a **brand-new** MFE (like ``tels-public``), pick a new id and use it *consistently* everywhere else that MFE is referenced in this file — Dockerfile ``ENV_PATCHES`` keys (``mfe-dockerfile-post-npm-install-<id>``), ``PLUGIN_SLOTS`` calls, ``indigo_styled_mfes``, ``HEADER_REPLACEMENT_SLOTS``, and any ``INDIGO_*_URL`` setting. A mismatched id silently no-ops the patch for that MFE instead of erroring — there is currently one such mismatch in this file (``tels-public`` vs ``public``) flagged in a comment next to ``FORKED_MFE_APPS``; check the rendered MFE Dockerfile (``env/plugins/mfe/build/mfe/Dockerfile``) if a patch doesn't seem to be landing.
+
+To add another forked or custom MFE:
+
+1. Add one entry to ``FORKED_MFE_APPS``: ``repository`` (git URL), ``version`` (branch/tag/commit), ``port`` (a free local dev port not used by another MFE).
+2. ``tutor config save`` (re-renders the MFE build Dockerfile) then ``tutor images build mfe``.
+3. If it should carry TitanEd branding, add its app id to ``indigo_styled_mfes`` so the brand CSS package installs at image-build time.
+4. If it needs the shared custom header/footer, add it to ``HEADER_REPLACEMENT_SLOTS`` and the footer loop — see the "Header + footer overrides" comment block in ``plugin.py`` for which slot id(s) each MFE actually mounts (slot ids are not interchangeable between MFEs).
+
+If you were previously registering a forked MFE from a separate, standalone Tutor plugin (e.g. one calling ``MFE_APPS.add()`` on its own), move its entry into ``FORKED_MFE_APPS`` here and disable that plugin (``tutor plugins disable <name>``) — leaving both enabled is harmless as long as the entries agree (identical values just get applied twice), but it's one fewer file to keep in sync.
+
+Custom Django plugin apps (``CUSTOM_DJANGO_APPS``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+TitanEd's own Django plugin apps for edx-platform — e.g. `control-panel <https://github.com/TitanEd/control-panel>`__ — are normally bind-mounted from local disk for development, so none of this applies day to day. On an environment with no local mount (UAT, staging, production), an app instead needs to be ``pip install``ed straight from its (private) GitHub repo when the ``openedx`` image is built. This is data-driven via the ``CUSTOM_DJANGO_APPS`` dict near the top of ``tutorindigo/plugin.py``::
+
+    CUSTOM_DJANGO_APPS: dict[str, dict[str, str]] = {
+        "CONTROL_PANEL": {
+            "repo": "TitanEd/control-panel",
+            "default_ref": "tels-template-1",
+        },
+    }
+
+Each key generates three ``tutor config`` settings, prefixed ``INDIGO_<key>_``:
+
+- ``INDIGO_<key>_INSTALL_FROM_GIT`` — bool, default ``false``. Set ``true`` **only** on environments that don't already have the package mounted from local disk.
+- ``INDIGO_<key>_REPO_REF`` — branch/tag/commit to install; defaults to that entry's ``default_ref``.
+- ``INDIGO_<key>_REPO_TOKEN`` — a GitHub Personal Access Token with **read-only** access to the repo (needed while it's private). No safe default; required whenever ``INSTALL_FROM_GIT`` is true.
+
+For example, to install ``control-panel`` from git on a box with no local mount::
+
+    tutor config save --set INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT=true
+    tutor config save --set INDIGO_CONTROL_PANEL_REPO_REF=tels-template-1
+    tutor config save --set INDIGO_CONTROL_PANEL_REPO_TOKEN=<fine-grained, read-only, single-repo PAT>
+    tutor images build openedx
+
+Use a fine-grained PAT scoped to *only* that one repo, read-only — not a classic all-repos token — so a leak's blast radius is one private repo, not your whole GitHub org. These tokens end up in ``config.yml`` in plaintext, same as every other secret Tutor stores there (DB passwords, JWT keys, etc.); protect ``config.yml`` itself (file permissions, host access control, never commit it to git) rather than trying to avoid this storage mechanism.
+
+To add your next custom Django plugin app, add one entry::
+
+    CUSTOM_DJANGO_APPS: dict[str, dict[str, str]] = {
+        "CONTROL_PANEL": {"repo": "TitanEd/control-panel", "default_ref": "tels-template-1"},
+        "SOME_OTHER_APP": {"repo": "TitanEd/some-other-app", "default_ref": "main"},
+    }
+
+``tutor config save`` will then pick up the newly-generated ``INDIGO_SOME_OTHER_APP_*`` settings automatically, and the matching install step is added to the ``openedx`` Dockerfile — no new patch code required.
+
 Theme Toggle Button
 -------------------
 

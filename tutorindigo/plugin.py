@@ -9,7 +9,7 @@ from glob import glob
 import importlib_resources
 from tutor import hooks
 from tutor.__about__ import __version_suffix__
-from tutormfe.hooks import PLUGIN_SLOTS
+from tutormfe.hooks import MFE_APPS, PLUGIN_SLOTS
 
 from .__about__ import __version__
 
@@ -115,6 +115,58 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
     "overrides": {},
 }
 
+# ---------------------------------------------------------------------------
+# Custom Django plugin apps (pip packages installed into the openedx image)
+#
+# Locally, a package like control-panel is bind-mounted from disk for dev
+# iteration (see tels_extensions_plugin.py's MOUNTED_DIRECTORIES) and none of
+# this applies. On an environment with no local mount (UAT/prod), it instead
+# needs to be `pip install`ed straight from its (private) GitHub repo at
+# image-build time. Previously that was hand-written once for control-panel
+# only (see the Dockerfile patch built from this dict, near the bottom of
+# this file); this dict makes it data-driven instead, so adding the next
+# custom Django plugin package means adding one entry here, not writing a
+# new Dockerfile patch block.
+#
+# Each `<key>` below generates three tutor config keys, `INDIGO_<key>_*`:
+#   INSTALL_FROM_GIT  bool, default False. Set true ONLY on environments that
+#       don't already have the package mounted from local disk:
+#         tutor config save --set INDIGO_<key>_INSTALL_FROM_GIT=true
+#   REPO_REF          branch/tag/commit to install, defaults to this dict's
+#       "default_ref" below. Override per environment, e.g.:
+#         tutor config save --set INDIGO_<key>_REPO_REF=uat
+#   REPO_TOKEN        a GitHub Personal Access Token with read-only access to
+#       the repo (needed while it's private). MUST be set per environment,
+#       there is no safe default:
+#         tutor config save --set INDIGO_<key>_REPO_TOKEN=<token>
+#       Use a fine-grained PAT scoped to *only* this one repo, read-only, not
+#       a classic all-repos token — if it ever leaks, the blast radius is one
+#       private repo, not the whole GitHub org. This value lives in
+#       config.yml in plaintext, same as every other secret this deployment
+#       already stores there (DB passwords, JWT keys, etc.) — protect
+#       config.yml itself rather than trying to avoid this storage mechanism.
+# ---------------------------------------------------------------------------
+CUSTOM_DJANGO_APPS: dict[str, dict[str, str]] = {
+    "CONTROL_PANEL": {
+        "repo": "TitanEd/control-panel",
+        # NOTE: config.yml may already have INDIGO_CONTROL_PANEL_REPO_REF
+        # pinned to a stale value (e.g. "main", which doesn't exist in this
+        # repo — its branches are master / tels-native / tels-template-1)
+        # left over from before this mechanism existed. A tutor config
+        # default only applies when the key isn't already set, so check/fix
+        # an existing value with:
+        #   tutor config save --set INDIGO_CONTROL_PANEL_REPO_REF=tels-template-1
+        "default_ref": "tels-template-1",
+    },
+    # Add more custom Django plugin packages here, e.g.:
+    # "SOME_OTHER_APP": {"repo": "TitanEd/some-other-app", "default_ref": "main"},
+}
+
+for _app_key, _app in CUSTOM_DJANGO_APPS.items():
+    config["defaults"][f"{_app_key}_INSTALL_FROM_GIT"] = False
+    config["defaults"][f"{_app_key}_REPO_REF"] = _app["default_ref"]
+    config["defaults"][f"{_app_key}_REPO_TOKEN"] = ""
+
 # Theme templates
 hooks.Filters.ENV_TEMPLATE_ROOTS.add_item(
     str(importlib_resources.files("tutorindigo") / "templates")
@@ -194,6 +246,26 @@ indigo_styled_mfes = [
     "admin-console",
     "public",
 ]
+
+FORKED_MFE_APPS: dict[str, dict[str, str | int]] = {
+    "learning": {
+        "repository": "https://github.com/TitanEd/frontend-app-learning.git",
+        "port": 2000,
+        "version": "native-tels/ulmo.4",
+    },
+    "tels-public": {
+        "repository": "https://github.com/TitanEd/frontend-app-tels-public.git",
+        "port": 2024,
+        "version": "native-plus-template-a",
+    },
+}
+
+
+@MFE_APPS.add()
+def _add_forked_mfe_apps(mfes: dict[str, t.Any]) -> dict[str, t.Any]:
+    mfes.update(FORKED_MFE_APPS)
+    return mfes
+
 
 for mfe in indigo_styled_mfes:
     hooks.Filters.ENV_PATCHES.add_items(
@@ -434,6 +506,85 @@ for _mfe, _relpath in LEARNING_HEADER_WRAP_FILES.items():
     )
 
 
+# ---------------------------------------------------------------------------
+# Header/footer *translation* safety net.
+#
+# CustomHeader/IndigoFooter's own strings (tels.header.*/indigo.footer.*, and
+# the account.user.menu.*/avatarAlt ids from the header's user-menu sub-
+# components -- see tutorindigo/components/{CustomHeader,IndigoFooter,
+# LanguageMenu,CustomHeaderUserMenu*}.jsx) were added to openedx-translations'
+# EXISTING frontend-component-header/frontend-component-footer resources
+# (see that repo's transifex.yml) rather than a new one -- deliberately, so
+# any MFE that already pulls those two directories via its own
+# `pull_translations` Makefile target picks the new ids up with zero
+# Makefile changes.
+#
+# The catch: not every MFE's own Makefile actually lists both directories.
+# Confirmed against a built image: frontend-app-learner-dashboard (pulled
+# straight from stock openedx/frontend-app-learner-dashboard -- no TitanEd
+# fork of it exists to patch, see the repo_map in the workspace root
+# CLAUDE.md) pulls frontend-component-footer but NOT frontend-component-
+# header at all -- not even the pre-existing upstream header keys, so
+# CustomHeader was never translated there, predating this change entirely.
+# Since there's no fork to fix and an upstream Makefile can drop a pull
+# target at any time independent of this plugin, instead of special-casing
+# learner-dashboard (or chasing the next MFE with the same gap), every MFE
+# this plugin styles gets one extra Dockerfile step, right after
+# `pull_translations` (`mfe-dockerfile-pre-npm-build-<mfe>`, the same slot
+# LEARNING_HEADER_WRAP_FILES above uses) that atlas-pulls
+# frontend-component-header/-footer itself and merges their per-locale JSON
+# into `src/i18n/messages/frontend-platform` -- the one package *every* MFE
+# unconditionally pulls and imports (confirmed in frontend-app-authn's and
+# frontend-app-learning's own Makefiles) -- so the merged keys reach
+# `src/i18n/index.js` regardless of what that particular MFE's own
+# pull_translations target does or doesn't list. Re-running this for an MFE
+# that already pulls both directories correctly is harmless (same values
+# merged twice); `atlas` is already on PATH by this point since the stock
+# `pull_translations` step just used it moments earlier in the same image.
+# ---------------------------------------------------------------------------
+TRANSLATION_SAFETY_NET_MFES = sorted(
+    {("tels-public" if mfe == "public" else mfe) for mfe in HEADER_STYLED_MFES} | {"authoring"}
+)
+
+_TRANSLATION_SAFETY_NET_DOCKERFILE = """
+RUN atlas pull --repository={{ ATLAS_REPOSITORY }} --revision={{ ATLAS_REVISION }} {{ ATLAS_OPTIONS }} \\
+    translations/frontend-component-header/src/i18n/messages:/tmp/tels-i18n-safety-net/frontend-component-header \\
+    translations/frontend-component-footer/src/i18n/messages:/tmp/tels-i18n-safety-net/frontend-component-footer
+
+RUN node <<'EOF'
+const fs = require('fs');
+const path = require('path');
+const SRC_DIRS = [
+  '/tmp/tels-i18n-safety-net/frontend-component-header',
+  '/tmp/tels-i18n-safety-net/frontend-component-footer',
+];
+const DEST_DIR = 'src/i18n/messages/frontend-platform';
+fs.mkdirSync(DEST_DIR, { recursive: true });
+for (const srcDir of SRC_DIRS) {
+  if (!fs.existsSync(srcDir)) continue;
+  for (const file of fs.readdirSync(srcDir)) {
+    if (!file.endsWith('.json')) continue;
+    const srcPath = path.join(srcDir, file);
+    const destPath = path.join(DEST_DIR, file);
+    const incoming = JSON.parse(fs.readFileSync(srcPath, 'utf8'));
+    let existing = {};
+    if (fs.existsSync(destPath)) {
+      existing = JSON.parse(fs.readFileSync(destPath, 'utf8'));
+    }
+    const merged = Object.assign({}, existing, incoming);
+    fs.writeFileSync(destPath, JSON.stringify(merged));
+    console.log('[tels-i18n-safety-net] merged', Object.keys(incoming).length, 'keys from', srcPath, 'into', destPath);
+  }
+}
+EOF
+"""
+
+for _mfe in TRANSLATION_SAFETY_NET_MFES:
+    hooks.Filters.ENV_PATCHES.add_item(
+        (f"mfe-dockerfile-pre-npm-build-{_mfe}", _TRANSLATION_SAFETY_NET_DOCKERFILE)
+    )
+
+
 # TitanEd brand CSS — flip BRAND_THEME_SOURCE between "development", "deployed"
 # and "live". Switch here ↓
 BRAND_THEME_SOURCE = "live"  # "development" | "deployed" | "live"
@@ -528,15 +679,6 @@ paragon_theme_urls = {
 paragon_theme_urls_json = json.dumps(paragon_theme_urls)
 
 if BRAND_THEME_SOURCE == "live":
-    # Break out of the JSON string literal at the placeholder and splice in
-    # a real Python string-concatenation expression, so the generated
-    # settings.py line ends up referencing the bare `LMS_ROOT_URL` name
-    # (defined earlier in the same rendered file -- see the long comment
-    # above `_LMS_ROOT_URL_PLACEHOLDER`) rather than a JSON-quoted copy of
-    # the placeholder text itself:
-    #   '"__LMS_ROOT_URL_PLACEHOLDER__/foo"'   (JSON string, wrong)
-    #     becomes
-    #   '"" + LMS_ROOT_URL + "/foo"'           (Python expression, correct)
     placeholder_count = paragon_theme_urls_json.count(f'"{_LMS_ROOT_URL_PLACEHOLDER}')
     assert placeholder_count == 3, (  # core + light + dark brandOverride URLs
         f"tutorindigo/plugin.py: expected exactly 3 occurrences of the "
@@ -585,3 +727,23 @@ hooks.Filters.ENV_PATCHES.add_item(("mfe-lms-common-settings", fstring))
 
 # NOTE: Do NOT replace logo_slot with ThemedLogo — it breaks header logos that
 # already use MFE_CONFIG LOGO_URL / design-token header styles (tels_brand_image).
+
+_CUSTOM_DJANGO_APP_INSTALL_TEMPLATE = """
+{% if INDIGO___KEY___INSTALL_FROM_GIT %}
+{% if INDIGO___KEY___REPO_TOKEN %}
+RUN --mount=type=cache,target=/openedx/.cache/pip,sharing=shared $PIP_COMMAND install 'git+https://{{ INDIGO___KEY___REPO_TOKEN }}@github.com/__REPO__.git@{{ INDIGO___KEY___REPO_REF }}'
+{% else %}
+RUN echo "ERROR: INDIGO___KEY___INSTALL_FROM_GIT is true but INDIGO___KEY___REPO_TOKEN is not set. __REPO__ cannot be installed without it. Fix: tutor config save --set INDIGO___KEY___REPO_TOKEN=<your-github-token> (use a fine-grained, read-only, single-repo-scoped PAT), then rebuild." && exit 1
+{% endif %}
+{% endif %}
+"""
+
+for _app_key, _app in CUSTOM_DJANGO_APPS.items():
+    hooks.Filters.ENV_PATCHES.add_item(
+        (
+            "openedx-dockerfile-post-python-requirements",
+            _CUSTOM_DJANGO_APP_INSTALL_TEMPLATE.replace("__KEY__", _app_key).replace(
+                "__REPO__", _app["repo"]
+            ),
+        )
+    )
