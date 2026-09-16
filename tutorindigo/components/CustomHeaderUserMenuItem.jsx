@@ -3,8 +3,8 @@
  * (org.openedx.frontend.layout.header_desktop_user_menu.v1 /
  * header_mobile_user_menu.v1). Same items and admin/non-admin gating as the
  * reference theme: everyone gets Dashboard/Profile/Account/Sign out; users
- * with `authenticatedUser.administrator` also get Control Hub, plus Studio
- * when the MFE's config exposes STUDIO_BASE_URL.
+ * with `authenticatedUser.administrator` also get Studio when the MFE's
+ * config exposes STUDIO_BASE_URL.
  *
  * Message ids intentionally reuse @edx/frontend-component-header's own
  * catalog ids (account.user.menu.*) rather than a tels.* namespace — every
@@ -29,11 +29,6 @@ const userMenuItemMessages = defineMessages({
     id: 'account.user.menu.account',
     defaultMessage: 'Account',
     description: 'Account settings link label in the user menu',
-  },
-  controlHub: {
-    id: 'account.user.menu.control.hub',
-    defaultMessage: 'Control Hub',
-    description: 'Control Hub link label in the user menu (admin only)',
   },
   studio: {
     id: 'account.user.menu.studio',
@@ -70,18 +65,11 @@ const CustomHeaderUserMenuItem = () => {
       content: intl.formatMessage(userMenuItemMessages.account),
       href: config.ACCOUNT_SETTINGS_URL,
     },
-    ...(canSeePrivilegedItems ? [
-      {
-        key: 'control-hub',
-        content: intl.formatMessage(userMenuItemMessages.controlHub),
-        href: `${config.LMS_BASE_URL}/control-hub`,
-      },
-      ...(studioUrl ? [{
-        key: 'studio',
-        content: intl.formatMessage(userMenuItemMessages.studio),
-        href: studioUrl,
-      }] : []),
-    ] : []),
+    ...(canSeePrivilegedItems && studioUrl ? [{
+      key: 'studio',
+      content: intl.formatMessage(userMenuItemMessages.studio),
+      href: studioUrl,
+    }] : []),
     {
       key: 'signout',
       content: intl.formatMessage(userMenuItemMessages.signout),

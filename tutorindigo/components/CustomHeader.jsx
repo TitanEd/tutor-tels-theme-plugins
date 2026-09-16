@@ -91,11 +91,6 @@ const customHeaderMessages = defineMessages({
     defaultMessage: 'Account',
     description: 'User dropdown Account settings link',
   },
-  controlHub: {
-    id: 'account.user.menu.control.hub',
-    defaultMessage: 'Control Hub',
-    description: 'Control Hub link label in the user menu (admin only)',
-  },
   studio: {
     id: 'account.user.menu.studio',
     defaultMessage: 'Studio',
@@ -130,7 +125,6 @@ const CustomHeader = () => {
     : null;
   const accountUrl = config.ACCOUNT_SETTINGS_URL;
   const studioUrl = config.STUDIO_BASE_URL;
-  const controlHubUrl = `${config.LMS_BASE_URL}/control-hub`;
   const canSeePrivilegedItems = authenticatedUser?.administrator === true;
   const isPublicMfe = process.env.APP_ID === 'public';
   const guestNav = config.INDIGO_HEADER_GUEST_NAV || DEFAULT_GUEST_NAV;
@@ -153,11 +147,6 @@ const CustomHeader = () => {
       key: 'dashboard',
       href: dashboardUrl,
       message: customHeaderMessages.dashboard,
-    },
-    canSeePrivilegedItems && {
-      key: 'control-hub',
-      href: controlHubUrl,
-      message: customHeaderMessages.controlHub,
     },
     canSeePrivilegedItems && studioUrl && {
       key: 'studio',

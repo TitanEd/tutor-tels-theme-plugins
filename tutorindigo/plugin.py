@@ -253,7 +253,24 @@ FORKED_MFE_APPS: dict[str, dict[str, str | int]] = {
         "port": 2000,
         "version": "native-tels/ulmo.4",
     },
-    "tels-public": {
+    # NOTE: the app id here is "public", not "tels-public" -- it MUST match
+    # indigo_styled_mfes / HEADER_REPLACEMENT_SLOTS / HEADER_STYLED_MFES
+    # below, which have always said "public" (the desired live URL is
+    # {MFE_HOST}/public/, matching INDIGO_HOME_URL's default). This entry
+    # previously said "tels-public", registering a SECOND, independent MFE
+    # app (Tutor builds a separate Docker stage per MFE_APPS key) at
+    # {MFE_HOST}/tels-public/ that got none of this file's "public"-keyed
+    # patches -- brand CSS never installed, CustomHeader/IndigoFooter never
+    # inserted via PLUGIN_SLOTS -- while the real, fully-styled "public" app
+    # was built from the *separate* registration in
+    # ~/.local/share/tutor-plugins/tels_forked_mfe.py (also enabled, also
+    # registering this exact repo, correctly under "public"). Both apps
+    # bound the same host port (2024) in dev mode. Keeping this entry's key
+    # in sync with that file's key -- rather than removing this entry and
+    # relying solely on tels_forked_mfe.py -- is deliberate: it's what makes
+    # the standalone tels_forked_mfe.py plugin fully redundant (see the
+    # FORKED_MFE_APPS comment above), safe to disable once this is deployed.
+    "public": {
         "repository": "https://github.com/TitanEd/frontend-app-tels-public.git",
         "port": 2024,
         "version": "native-plus-template-a",
@@ -542,9 +559,12 @@ for _mfe, _relpath in LEARNING_HEADER_WRAP_FILES.items():
 # merged twice); `atlas` is already on PATH by this point since the stock
 # `pull_translations` step just used it moments earlier in the same image.
 # ---------------------------------------------------------------------------
-TRANSLATION_SAFETY_NET_MFES = sorted(
-    {("tels-public" if mfe == "public" else mfe) for mfe in HEADER_STYLED_MFES} | {"authoring"}
-)
+# NOTE: no "public" -> "tels-public" remap here (there used to be one) --
+# HEADER_STYLED_MFES already says "public", the correct/actual app id (see
+# the FORKED_MFE_APPS comment above); remapping it here was only ever a
+# workaround for FORKED_MFE_APPS having the wrong key, now fixed at the
+# source instead.
+TRANSLATION_SAFETY_NET_MFES = sorted(set(HEADER_STYLED_MFES) | {"authoring"})
 
 _TRANSLATION_SAFETY_NET_DOCKERFILE = """
 RUN atlas pull --repository={{ ATLAS_REPOSITORY }} --revision={{ ATLAS_REVISION }} {{ ATLAS_OPTIONS }} \\
@@ -700,22 +720,35 @@ if BRAND_THEME_SOURCE == "live":
 # blob), so LMS_ROOT_URL can be referenced directly as Python source here --
 # no placeholder/splice trick needed for this part.
 #
-# All three of LOGO_URL/LOGO_WHITE_URL/LOGO_TRADEMARK_URL point at the same
-# /ui_configuration/logo endpoint -- every component here (CustomHeader,
-# ThemedLogo, MobileViewHeader, IndigoFooter) already falls back to the
-# same single config.LOGO_URL / config.LOGO_WHITE_URL pair, so nothing is
-# lost by unifying them behind one admin-uploaded image. FAVICON_URL is
-# read directly by frontend-platform itself (not by any component here).
-# FOOTER_LOGO_URL is best-effort -- see control-panel/ui_configuration/
-# views.py's footer_logo_redirect docstring for why.
+# LOGO_URL/LOGO_TRADEMARK_URL point at ColorScheme.logo (the main header
+# logo, /ui_configuration/logo) -- CustomHeader, ThemedLogo, MobileViewHeader
+# all read config.LOGO_URL for that.
+#
+# LOGO_WHITE_URL points at ColorScheme.footer_logo instead
+# (/ui_configuration/footer-logo) -- a separate admin upload meant for a
+# light-background-safe logo variant. IndigoFooter reads config.LOGO_WHITE_URL
+# first (falling back to LOGO_URL if no footer_logo has been uploaded yet);
+# ThemedLogo/MobileViewHeader's own dark-mode variant also reads
+# config.LOGO_WHITE_URL, so the same uploaded image is reused there too --
+# there is only one "light/white" logo field on ColorScheme today, not a
+# separate one per consumer.
+#
+# FAVICON_URL is read directly by frontend-platform itself (not by any
+# component here). FOOTER_CONFIG_URL feeds IndigoFooter's address/contact-
+# email/social-links/copyright -- see control-panel/ui_configuration's
+# FooterConfiguration model and the footer_config view; IndigoFooter fetches
+# this URL client-side (JSON, not an <img src>) and falls back to the
+# INDIGO_FOOTER_* config below when it 404s / hasn't been configured / the
+# fetch fails for any reason.
 logo_favicon_settings = ""
 if BRAND_THEME_SOURCE == "live":
     logo_favicon_settings = """
 MFE_CONFIG["LOGO_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
-MFE_CONFIG["LOGO_WHITE_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["LOGO_WHITE_URL"] = LMS_ROOT_URL + "/ui_configuration/footer-logo"
 MFE_CONFIG["LOGO_TRADEMARK_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
 MFE_CONFIG["FOOTER_LOGO_URL"] = LMS_ROOT_URL + "/ui_configuration/footer-logo"
 MFE_CONFIG["FAVICON_URL"] = LMS_ROOT_URL + "/ui_configuration/favicon"
+MFE_CONFIG["FOOTER_CONFIG_URL"] = LMS_ROOT_URL + "/ui_configuration/footer-config"
 """
 
 fstring = f"""

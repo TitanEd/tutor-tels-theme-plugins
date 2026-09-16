@@ -133,18 +133,66 @@ const IndigoFooter = () => {
   const config = getConfig();
   const siteName = config.SITE_NAME || 'TitanEd';
   const year = new Date().getFullYear();
-  const logoUrl = config.LOGO_URL
-    || config.LOGO_WHITE_URL
+  // Footer uses LOGO_WHITE_URL first -- the "live" MFE_CONFIG wiring
+  // (tutorindigo/plugin.py) points it at ColorScheme.footer_logo
+  // specifically, a separate upload from the main header LOGO_URL (see
+  // control-panel/ui_configuration/models.py). Falls back to LOGO_URL if an
+  // admin hasn't uploaded a dedicated footer logo yet.
+  const logoUrl = config.LOGO_WHITE_URL
+    || config.LOGO_URL
     || `${config.LMS_BASE_URL}/theming/asset/images/logo.png`;
-  const socialLinks = config.INDIGO_FOOTER_SOCIAL_LINKS || [];
+
+  // Live, admin-editable footer content (control-panel's
+  // ui_configuration.FooterConfiguration, see models.py) -- fetched
+  // client-side since, unlike the logo/theme CSS above, this is JSON, not
+  // something an <img src>/<link> can load directly. Only present at all
+  // when BRAND_THEME_SOURCE == "live" (plugin.py sets FOOTER_CONFIG_URL);
+  // any failure (no URL configured, network error, non-200, nothing set in
+  // admin yet) just leaves liveFooterConfig null and every field below
+  // falls back to the existing static INDIGO_FOOTER_* Tutor config exactly
+  // as it did before this existed.
+  const [liveFooterConfig, setLiveFooterConfig] = useState(null);
+  useEffect(() => {
+    const footerConfigUrl = config.FOOTER_CONFIG_URL;
+    if (!footerConfigUrl) {
+      return undefined;
+    }
+    let cancelled = false;
+    fetch(footerConfigUrl)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (!cancelled && data) {
+          setLiveFooterConfig(data);
+        }
+      })
+      .catch(() => {
+        // Best-effort only -- see the comment above. Nothing to do here.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [config.FOOTER_CONFIG_URL]);
+
+  const socialLinks = (liveFooterConfig && liveFooterConfig.social_links && liveFooterConfig.social_links.length > 0)
+    ? liveFooterConfig.social_links
+    : (config.INDIGO_FOOTER_SOCIAL_LINKS || []);
   const exploreLinks = config.INDIGO_FOOTER_EXPLORE_LINKS || DEFAULT_EXPLORE_LINKS;
   const companyLinks = config.INDIGO_FOOTER_COMPANY_LINKS || DEFAULT_COMPANY_LINKS;
   const supportLinks = config.INDIGO_FOOTER_SUPPORT_LINKS || DEFAULT_SUPPORT_LINKS;
   const contact = config.INDIGO_FOOTER_CONTACT || {};
-  const contactEmail = contact.email || 'Legal@TitanEd.com';
+  const contactEmail = (liveFooterConfig && liveFooterConfig.contact_email) || contact.email || 'Legal@TitanEd.com';
   const contactWebUrl = contact.web_url || 'https://titaned.com/';
   const contactWebLabel = contact.web_label || 'titaned.com';
-  const addressLines = contact.address_lines || ['TitanEd, Gurugram,', 'Haryana, India'];
+  const addressLines = (liveFooterConfig && liveFooterConfig.address_lines && liveFooterConfig.address_lines.length > 0)
+    ? liveFooterConfig.address_lines
+    : (contact.address_lines || ['TitanEd, Gurugram,', 'Haryana, India']);
+  // Admin-provided copyright text is free-form (not a translatable ICU
+  // message like the default) -- only {year}/{siteName} are substituted,
+  // matching the two placeholders the default translated message supports.
+  const copyrightOverride = liveFooterConfig && liveFooterConfig.copyright_text;
+  const copyrightText = copyrightOverride
+    ? copyrightOverride.replace('{year}', year).replace('{siteName}', siteName)
+    : intl.formatMessage(indigoFooterMessages.copyright, { year, siteName });
 
   // Home/Courses/About/Contact/Privacy/Terms → public MFE (see publicUrls.js).
   const resolveUrl = (url) => resolvePublicMfeUrl(url, config);
@@ -248,9 +296,7 @@ const IndigoFooter = () => {
         </div>
 
         <div className="tels-footer__bottom">
-          <span>
-            {intl.formatMessage(indigoFooterMessages.copyright, { year, siteName })}
-          </span>
+          <span>{copyrightText}</span>
           <span>{intl.formatMessage(indigoFooterMessages.poweredBy)}</span>
         </div>
       </div>
