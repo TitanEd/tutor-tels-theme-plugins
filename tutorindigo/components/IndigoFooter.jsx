@@ -19,14 +19,8 @@ const isHiddenFooterLink = (link) => {
 
 /**
  * Shared marketing footer for all MFEs (PLUGIN_SLOTS → indigo_footer).
- * Template B (Harvard-PLL / tels-mirror). Structure: a single CTA button,
- * the "Footer Links" column (screen-reader-only heading, matching Drupal's
- * own pll.harvard.edu markup), and the site logo — no social icons, no
- * contact block, no bottom copyright bar. The link *set* itself matches
- * tels-mirror's own Footer.tsx (Privacy / Terms / About Us / Contact), not
- * the real Harvard site's (which links Accessibility / EEA Privacy
- * Disclosures instead — not this product's pages). Styles:
- * tels-brand-openedx .tels-footer* (design tokens only).
+ * Same structure as public MFE IndigoFooter: CTA + Footer Links + logo.
+ * Styles: tels-brand-openedx .tels-footer* (design tokens only).
  */
 const indigoFooterMessages = defineMessages({
   exploreCoursesCta: {
@@ -44,6 +38,16 @@ const indigoFooterMessages = defineMessages({
   terms: { id: 'indigo.footer.link.terms', defaultMessage: 'Terms of Use', description: 'Footer Terms of Use link' },
   about: { id: 'indigo.footer.link.about', defaultMessage: 'About Us', description: 'Footer About Us link' },
   contact: { id: 'indigo.footer.link.contact', defaultMessage: 'Contact', description: 'Footer Contact link' },
+  homeAria: {
+    id: 'indigo.footer.logo.aria',
+    defaultMessage: '{siteName} Home',
+    description: 'Footer logo link aria-label',
+  },
+  logoAlt: {
+    id: 'indigo.footer.logo.alt',
+    defaultMessage: '{siteName}',
+    description: 'Footer logo image alt text',
+  },
 });
 
 const IndigoFooter = () => {
@@ -88,8 +92,11 @@ const IndigoFooter = () => {
 
         <div className="tels-footer__brand">
           <div className="tels-footer__logo">
-            <a href={homeUrl} aria-label={siteName}>
-              <img src={logoUrl} alt={siteName} />
+            <a href={homeUrl} aria-label={intl.formatMessage(indigoFooterMessages.homeAria, { siteName })}>
+              <img
+                src={logoUrl}
+                alt={intl.formatMessage(indigoFooterMessages.logoAlt, { siteName })}
+              />
             </a>
           </div>
         </div>

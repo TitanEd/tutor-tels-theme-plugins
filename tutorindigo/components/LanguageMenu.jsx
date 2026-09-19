@@ -18,7 +18,14 @@ const LanguageMenu = () => {
 
   const cookies = new Cookies();
   const cookieName = config.LANGUAGE_PREFERENCE_COOKIE_NAME || 'openedx-language-preference';
-  const serverURL = new URL(config.LMS_BASE_URL);
+  let cookieDomain;
+  try {
+    if (config.LMS_BASE_URL) {
+      cookieDomain = new URL(config.LMS_BASE_URL).hostname;
+    }
+  } catch {
+    cookieDomain = undefined;
+  }
   const currentLocale = (intl.locale || 'en').toLowerCase();
   const selectedValue = languages.find((lang) => lang.value.toLowerCase() === currentLocale)?.value
     || languages.find((lang) => currentLocale.startsWith(lang.value.toLowerCase()))?.value
@@ -27,7 +34,7 @@ const LanguageMenu = () => {
   const onChange = (event) => {
     cookies.set(cookieName, event.target.value, {
       path: '/',
-      domain: serverURL.hostname,
+      ...(cookieDomain ? { domain: cookieDomain } : {}),
       expires: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
       sameSite: 'lax',
     });
