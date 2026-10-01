@@ -1,6 +1,10 @@
 
 const ThemedLogo = () => {
-  const BASE_URL = getConfig().LMS_BASE_URL;
+  const config = getConfig();
+  const BASE_URL = config.LMS_BASE_URL;
+  // Live branding (control-panel ui_configuration) serves the admin-uploaded logos.
+  const logoUrl = (config.INDIGO_LIVE_BRANDING && config.LOGO_URL) || `${BASE_URL}/static/indigo/images/logo.png`;
+  const logoWhiteUrl = (config.INDIGO_LIVE_BRANDING && config.LOGO_WHITE_URL) || `${BASE_URL}/static/indigo/images/logo-white.png`;
 
   return (
     <>
@@ -18,8 +22,8 @@ const ThemedLogo = () => {
         `}
       </style>
       <a href={`${BASE_URL}/dashboard`} title="Open edX" className="logo">
-        <img className="logo-image" src={`${BASE_URL}/static/indigo/images/logo.png`} alt="Open edX" />
-        <img className="logo-image logo-white" src={`${BASE_URL}/static/indigo/images/logo-white.png`} alt="Open edX" />
+        <img className="logo-image" src={logoUrl} alt="Open edX" />
+        <img className="logo-image logo-white" src={logoWhiteUrl} alt="Open edX" />
       </a>
     </>
   );

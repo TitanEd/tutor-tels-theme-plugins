@@ -11,6 +11,9 @@ const MobileViewHeader = () => {
   };
 
   const BASE_URL = config.LMS_BASE_URL;
+  // Live branding (control-panel ui_configuration) serves the admin-uploaded logos.
+  const logoUrl = (config.INDIGO_LIVE_BRANDING && config.LOGO_URL) || `${BASE_URL}/static/indigo/images/logo.png`;
+  const logoWhiteUrl = (config.INDIGO_LIVE_BRANDING && config.LOGO_WHITE_URL) || `${BASE_URL}/static/indigo/images/logo-white.png`;
 
   return (
     <>
@@ -28,8 +31,8 @@ const MobileViewHeader = () => {
         `}
       </style>
       <a href={`${BASE_URL}/dashboard`} title="Open edX" className="logo">
-        <img className="logo-image" src={`${BASE_URL}/static/indigo/images/logo.png`} alt={intl.formatMessage(messages["mobile.view.header.logo.altText"])} />
-        <img className="logo-image logo-white" src={`${BASE_URL}/static/indigo/images/logo-white.png`} alt={intl.formatMessage(messages["mobile.view.header.logo.altText"])} />
+        <img className="logo-image" src={logoUrl} alt={intl.formatMessage(messages["mobile.view.header.logo.altText"])} />
+        <img className="logo-image logo-white" src={logoWhiteUrl} alt={intl.formatMessage(messages["mobile.view.header.logo.altText"])} />
       </a>
     </>
   );

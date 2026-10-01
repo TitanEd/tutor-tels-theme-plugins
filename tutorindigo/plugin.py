@@ -38,6 +38,42 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
             {"title": "Help", "url": "/help"},
             {"title": "Contact Us", "url": "/contact"},
         ],
+        # TitanEd brand CSS source for the MFEs (PARAGON_THEME_URLS):
+        #   "live"        -> control-panel's ui_configuration app
+        #                    (LMS_ROOT_URL/ui_configuration/theme/*). Changes made
+        #                    in /admin/ui_configuration/colorscheme/ apply on the
+        #                    next page load, no restart or rebuild needed.
+        #   "deployed"    -> tels-brand-openedx dist/ on GitHub
+        #   "development" -> local tels-brand-openedx `npm run serve`
+        #   "indigo"      -> upstream Indigo (edly-io brand-openedx), unchanged
+        #   tutor config save --set INDIGO_BRAND_THEME_SOURCE=live
+        "BRAND_THEME_SOURCE": "live",
+        "BRAND_THEME_DEVELOPMENT_URL": "http://localhost:3000",
+        "BRAND_THEME_DEPLOYED_URL": (
+            "https://raw.githubusercontent.com/TitanEd/tels-brand-openedx/"
+            "refs/heads/native-tels-brand-openedx/dist"
+        ),
+        # Full Paragon CSS used as the `default` URL next to `brandOverride`
+        # for legacy (frontend-platform) MFEs.
+        "PARAGON_VERSION": "23.14.9",
+        # npm package installed as @edx/brand in the MFE image (build time).
+        # TitanEd brand: tutor config save --set
+        #   INDIGO_BRAND_PACKAGE="@edx/brand@github:@TitanEd/tels-brand-openedx#native-tels-brand-openedx"
+        "BRAND_PACKAGE": "@edx/brand@github:@edly-io/brand-openedx#indigo-3.1.0",
+        # CONTROL_PANEL_INSTALL_FROM_GIT: set to true ONLY on environments
+        # that don't already have control-panel mounted from local disk --
+        # i.e. UAT/prod, never local dev:
+        #   tutor config save --set INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT=true
+        "CONTROL_PANEL_INSTALL_FROM_GIT": False,
+        # CONTROL_PANEL_REPO_REF: which branch/tag/commit of control-panel
+        # to install, e.g.
+        #   tutor config save --set INDIGO_CONTROL_PANEL_REPO_REF=uat
+        "CONTROL_PANEL_REPO_REF": "main",
+        # CONTROL_PANEL_REPO_TOKEN: a fine-grained, read-only GitHub PAT scoped
+        # to TitanEd/control-panel only (private repo). MUST be set per
+        # environment; it ends up in config.yml and in the image build history:
+        #   tutor config save --set INDIGO_CONTROL_PANEL_REPO_TOKEN=<token>
+        "CONTROL_PANEL_REPO_TOKEN": "",
     },
     "unique": {},
     "overrides": {},
@@ -124,7 +160,7 @@ for mfe in indigo_styled_mfes:
             (
                 f"mfe-dockerfile-post-npm-install-{mfe}",
                 """
-RUN npm install '@edx/brand@github:@edly-io/brand-openedx#indigo-3.1.0'
+RUN npm install '{{ INDIGO_BRAND_PACKAGE }}'
 """,  # noqa: E501
             ),
         ]
@@ -133,7 +169,7 @@ RUN npm install '@edx/brand@github:@edly-io/brand-openedx#indigo-3.1.0'
 hooks.Filters.ENV_PATCHES.add_item(
     (
         "mfe-dockerfile-post-npm-install-authn",
-        "RUN npm install '@edx/brand@github:@edly-io/brand-openedx#indigo-3.1.0'",
+        "RUN npm install '{{ INDIGO_BRAND_PACKAGE }}'",
     )
 )
 
@@ -373,6 +409,104 @@ FRONTEND_SITE_CONFIG["commonAppConfig"][
     "INDIGO_FOOTER_NAV_LINKS"
 ] = {{ INDIGO_FOOTER_NAV_LINKS }}
 """,
+    )
+)
+
+# TitanEd brand CSS, logos and favicon. Rendered after the Indigo settings
+# above, so it replaces them unless INDIGO_BRAND_THEME_SOURCE is "indigo".
+# In "live" mode every URL points at control-panel's ui_configuration app,
+# which renders the CSS/logos from the ColorScheme admin on each request
+# (ETag + no-cache), so admin changes show up on the next page load.
+# LMS_ROOT_URL is the Python setting, so the dev (:8000) and prod URLs are
+# both correct.
+hooks.Filters.ENV_PATCHES.add_item(
+    (
+        "mfe-lms-common-settings",
+        """
+{% if INDIGO_BRAND_THEME_SOURCE in ["live", "deployed", "development"] %}
+# TitanEd brand theme (INDIGO_BRAND_THEME_SOURCE={{ INDIGO_BRAND_THEME_SOURCE }})
+{% if INDIGO_BRAND_THEME_SOURCE == "live" %}
+_TELS_BRAND_DIST = LMS_ROOT_URL + "/ui_configuration/theme"
+{% elif INDIGO_BRAND_THEME_SOURCE == "deployed" %}
+_TELS_BRAND_DIST = "{{ INDIGO_BRAND_THEME_DEPLOYED_URL.rstrip('/') }}"
+{% else %}
+_TELS_BRAND_DIST = "{{ INDIGO_BRAND_THEME_DEVELOPMENT_URL.rstrip('/') }}"
+{% endif %}
+_TELS_PARAGON_CDN = "https://cdn.jsdelivr.net/npm/@openedx/paragon@{{ INDIGO_PARAGON_VERSION }}/dist"
+
+# Legacy (frontend-platform) MFEs: `default` = full Paragon CSS,
+# `brandOverride` = TitanEd tokens.
+MFE_CONFIG["PARAGON_THEME_URLS"] = {
+    "core": {
+        "urls": {
+            "default": _TELS_PARAGON_CDN + "/core.min.css",
+            "brandOverride": _TELS_BRAND_DIST + "/core.min.css",
+        },
+    },
+    "defaults": {"light": "light", "dark": "dark"},
+    "variants": {
+        "light": {
+            "urls": {
+                "default": _TELS_PARAGON_CDN + "/light.min.css",
+                "brandOverride": _TELS_BRAND_DIST + "/light.min.css",
+            },
+        },
+        "dark": {
+            "urls": {
+                "default": _TELS_PARAGON_CDN + "/dark.min.css",
+                "brandOverride": _TELS_BRAND_DIST + "/dark.min.css",
+            },
+        },
+    },
+}
+FRONTEND_SITE_CONFIG["commonAppConfig"]["PARAGON_THEME_URLS"] = MFE_CONFIG["PARAGON_THEME_URLS"]
+
+# frontend-base sites bundle Paragon's base CSS, so `theme` only carries the
+# brand override URLs (see mfe_config_api.views.translate_paragon_theme_urls).
+FRONTEND_SITE_CONFIG["theme"] = {
+    "core": {"url": _TELS_BRAND_DIST + "/core.min.css"},
+    "defaults": {"light": "light", "dark": "dark"},
+    "variants": {
+        "light": {"url": _TELS_BRAND_DIST + "/light.min.css"},
+        "dark": {"url": _TELS_BRAND_DIST + "/dark.min.css"},
+    },
+}
+{% if INDIGO_BRAND_THEME_SOURCE == "live" %}
+# Logos and favicon from the ColorScheme admin. LOGO_WHITE_URL (dark
+# background variant) uses the footer logo upload, see control-panel's
+# ui_configuration.views.footer_logo_redirect.
+MFE_CONFIG["LOGO_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["LOGO_WHITE_URL"] = LMS_ROOT_URL + "/ui_configuration/footer-logo"
+MFE_CONFIG["LOGO_TRADEMARK_URL"] = LMS_ROOT_URL + "/ui_configuration/logo"
+MFE_CONFIG["FOOTER_LOGO_URL"] = LMS_ROOT_URL + "/ui_configuration/footer-logo"
+MFE_CONFIG["FAVICON_URL"] = LMS_ROOT_URL + "/ui_configuration/favicon"
+# Tells ThemedLogo/MobileViewHeader to use LOGO_URL/LOGO_WHITE_URL instead
+# of the static Indigo logo images.
+MFE_CONFIG["INDIGO_LIVE_BRANDING"] = True
+FRONTEND_SITE_CONFIG["headerLogoImageUrl"] = MFE_CONFIG["LOGO_URL"]
+for _tels_key in ["LOGO_WHITE_URL", "LOGO_TRADEMARK_URL", "FOOTER_LOGO_URL", "FAVICON_URL", "INDIGO_LIVE_BRANDING"]:
+    FRONTEND_SITE_CONFIG["commonAppConfig"][_tels_key] = MFE_CONFIG[_tels_key]
+{% endif %}
+{% endif %}
+""",
+    )
+)
+
+# Install control-panel (custom_extensions: ui_configuration, course_metadata,
+# ...) from its private GitHub repo. Only for environments that don't mount a
+# local checkout (UAT/prod), see the INDIGO_CONTROL_PANEL_* settings.
+hooks.Filters.ENV_PATCHES.add_item(
+    (
+        "openedx-dockerfile-post-python-requirements",
+        """
+{% if INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT %}
+{% if INDIGO_CONTROL_PANEL_REPO_TOKEN %}
+RUN --mount=type=cache,target=/openedx/.cache/pip,sharing=shared $PIP_COMMAND install 'git+https://{{ INDIGO_CONTROL_PANEL_REPO_TOKEN }}@github.com/TitanEd/control-panel.git@{{ INDIGO_CONTROL_PANEL_REPO_REF }}'
+{% else %}
+RUN echo "ERROR: INDIGO_CONTROL_PANEL_INSTALL_FROM_GIT is true but INDIGO_CONTROL_PANEL_REPO_TOKEN is not set. Fix: tutor config save --set INDIGO_CONTROL_PANEL_REPO_TOKEN=<fine-grained read-only PAT>, then rebuild." && exit 1
+{% endif %}
+{% endif %}
+""",  # noqa: E501
     )
 )
 
