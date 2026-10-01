@@ -38,11 +38,9 @@ const TELS_SOCIAL_NAMES = {
 const TELS_FOOTER_STYLE = `
   .tels-footer {
     margin-top: 3rem;
-    background: var(--pgn-color-light-200);
     border-top: 1px solid var(--pgn-color-light-400);
     color: var(--pgn-color-text-footer, var(--pgn-color-body-base));
     font-family: var(--pgn-typography-font-family-base);
-    font-size: .9375rem;
   }
   .tels-footer__inner {
     max-width: var(--pgn-size-container-max-width-xl, 1440px);
@@ -72,9 +70,10 @@ const TELS_FOOTER_STYLE = `
   .tels-footer__social a:hover, .tels-footer__social a:focus-visible {
     background: var(--pgn-color-primary-base); border-color: var(--pgn-color-primary-base); color: #fff !important;
   }
-  .tels-footer__social svg { width: 1rem; height: 1rem; }
+  .tels-footer__social svg { width: 1.5rem; height: 1.5rem; }
   .tels-footer__links { justify-self: center; text-align: center; }
   .tels-footer__links ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: .625rem; }
+  .tels-footer__links ul li {display: inline-block;}
   .tels-footer__links a { color: var(--pgn-color-body-base) !important; text-decoration: none !important; font-weight: 500; }
   .tels-footer__links a:hover, .tels-footer__links a:focus-visible { color: var(--pgn-color-primary-base) !important; text-decoration: underline !important; }
   .tels-footer__contact { justify-self: end; display: flex; flex-direction: column; align-items: flex-end; gap: .75rem; text-align: end; }
