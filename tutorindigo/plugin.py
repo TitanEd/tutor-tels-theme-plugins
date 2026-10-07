@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import itertools
-import json
 import os
 import typing as t
 from glob import glob
@@ -57,9 +56,10 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         #                    A save there applies on the next page load, no
         #                    restart or rebuild needed.
         #   "deployed"    -> tels-brand-openedx dist/ on GitHub
+        #                    (INDIGO_BRAND_THEME_DEPLOYED_URL)
         #   "development" -> local tels-brand-openedx `npm run serve`
-        #   "indigo"      -> upstream Indigo (edly-io brand-openedx), unchanged
-        #                    (also set INDIGO_BRAND_PACKAGE to the edly-io one)
+        #                    (INDIGO_BRAND_THEME_DEVELOPMENT_URL)
+        #   Any other value behaves like "deployed".
         #   tutor config save --set INDIGO_BRAND_THEME_SOURCE=live
         "BRAND_THEME_SOURCE": "live",
         "BRAND_THEME_DEVELOPMENT_URL": "http://localhost:3000",
@@ -69,9 +69,8 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         # Full Paragon CSS used as the `default` URL next to `brandOverride`
         # for legacy (frontend-platform) MFEs.
         "PARAGON_VERSION": "23.14.9",
-        # npm package installed as @edx/brand in the MFE image (build time).
-        # Upstream Indigo brand instead:
-        #   tutor config save --set INDIGO_BRAND_PACKAGE="@edx/brand@github:@edly-io/brand-openedx#indigo-3.1.0"
+        # npm package installed as @edx/brand in the MFE image (build time):
+        # logos, favicon and SCSS of tels-brand-openedx at INDIGO_BRAND_REPO_REF.
         "BRAND_PACKAGE": "@edx/brand@github:{{ INDIGO_BRAND_REPO }}#{{ INDIGO_BRAND_REPO_REF }}",
         # CONTROL_PANEL_INSTALL_FROM_GIT: install control-panel from GitHub
         # into the openedx image. Skipped automatically when control-panel is
@@ -230,6 +229,10 @@ INDIGO_FOOTER_COMPAT_SLOT = (
     "org.openedx.frontend.layout.footer.v1",
     """
     {
+        op: PLUGIN_OPERATIONS.Hide,
+        widgetId: 'default_contents',
+    },
+    {
         op: PLUGIN_OPERATIONS.Insert,
         widget: {
             id: 'indigo_footer',
@@ -372,65 +375,9 @@ PLUGIN_SLOTS.add_items(
     ]
 )
 
-paragon_theme_urls = {
-    "variants": {
-        "light": {
-            "urls": {
-                "default": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/verawood/indigo/dist/light.min.css",
-                "brandOverride": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/verawood/indigo/dist/light.min.css",
-            },
-        },
-        "dark": {
-            "urls": {
-                "default": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/verawood/indigo/dist/dark.min.css",
-                "brandOverride": "https://raw.githubusercontent.com/edly-io/brand-openedx/refs/heads/verawood/indigo/dist/dark.min.css",
-            }
-        },
-    }
-}
-
-frontend_base_theme = {
-    "core": {
-        "url": "https://cdn.jsdelivr.net/gh/edly-io/brand-openedx@refs/heads/verawood/indigo/dist/core.min.css",
-    },
-    "defaults": {
-        "light": "light",
-        "dark": "dark",
-    },
-    "variants": {
-        "light": {
-            "url": "https://cdn.jsdelivr.net/gh/edly-io/brand-openedx@refs/heads/verawood/indigo/dist/light.min.css",
-        },
-        "dark": {
-            "url": "https://cdn.jsdelivr.net/gh/edly-io/brand-openedx@refs/heads/verawood/indigo/dist/dark.min.css",
-        },
-    },
-}
-
-hooks.Filters.CONFIG_DEFAULTS.add_item(("PARAGON_THEME_URLS", paragon_theme_urls))
-
-hooks.Filters.ENV_PATCHES.add_item(
-    (
-        "mfe-lms-common-settings",
-        """
-MFE_CONFIG["PARAGON_THEME_URLS"] = {{ PARAGON_THEME_URLS }}
-FRONTEND_SITE_CONFIG.setdefault("commonAppConfig", {})
-FRONTEND_SITE_CONFIG["theme"] = """
-        + json.dumps(frontend_base_theme)
-        + """
-FRONTEND_SITE_CONFIG["commonAppConfig"]["PARAGON_THEME_URLS"] = {{ PARAGON_THEME_URLS }}
-FRONTEND_SITE_CONFIG["commonAppConfig"][
-    "INDIGO_ENABLE_DARK_TOGGLE"
-] = {{ INDIGO_ENABLE_DARK_TOGGLE }}
-FRONTEND_SITE_CONFIG["commonAppConfig"][
-    "INDIGO_FOOTER_NAV_LINKS"
-] = {{ INDIGO_FOOTER_NAV_LINKS }}
-""",
-    )
-)
-
-# TitanEd brand CSS, logos and favicon. Rendered after the Indigo settings
-# above, so it replaces them unless INDIGO_BRAND_THEME_SOURCE is "indigo".
+# TitanEd brand CSS, logos and favicon (PARAGON_THEME_URLS for the legacy
+# MFEs, FRONTEND_SITE_CONFIG["theme"] for frontend-base sites), from the
+# source selected by INDIGO_BRAND_THEME_SOURCE.
 # In "live" mode every URL points at control-panel's ui_configuration app,
 # which renders the CSS/logos from the ColorScheme admin on each request
 # (ETag + no-cache), so admin changes show up on the next page load.
@@ -440,15 +387,17 @@ hooks.Filters.ENV_PATCHES.add_item(
     (
         "mfe-lms-common-settings",
         """
-{% if INDIGO_BRAND_THEME_SOURCE in ["live", "deployed", "development"] %}
 # TitanEd brand theme (INDIGO_BRAND_THEME_SOURCE={{ INDIGO_BRAND_THEME_SOURCE }})
 {% if INDIGO_BRAND_THEME_SOURCE == "live" %}
 _TELS_BRAND_DIST = LMS_ROOT_URL + "/ui_configuration/theme"
-{% elif INDIGO_BRAND_THEME_SOURCE == "deployed" %}
-_TELS_BRAND_DIST = "{{ INDIGO_BRAND_THEME_DEPLOYED_URL.rstrip('/') }}"
-{% else %}
+{% elif INDIGO_BRAND_THEME_SOURCE == "development" %}
 _TELS_BRAND_DIST = "{{ INDIGO_BRAND_THEME_DEVELOPMENT_URL.rstrip('/') }}"
+{% else %}
+_TELS_BRAND_DIST = "{{ INDIGO_BRAND_THEME_DEPLOYED_URL.rstrip('/') }}"
 {% endif %}
+FRONTEND_SITE_CONFIG.setdefault("commonAppConfig", {})
+FRONTEND_SITE_CONFIG["commonAppConfig"]["INDIGO_ENABLE_DARK_TOGGLE"] = {{ INDIGO_ENABLE_DARK_TOGGLE }}
+FRONTEND_SITE_CONFIG["commonAppConfig"]["INDIGO_FOOTER_NAV_LINKS"] = {{ INDIGO_FOOTER_NAV_LINKS }}
 _TELS_PARAGON_CDN = "https://cdn.jsdelivr.net/npm/@openedx/paragon@{{ INDIGO_PARAGON_VERSION }}/dist"
 
 # Legacy (frontend-platform) MFEs: `default` = full Paragon CSS,
@@ -509,7 +458,6 @@ for _tels_key in [
     "LOGO_WHITE_URL", "LOGO_TRADEMARK_URL", "FOOTER_LOGO_URL", "FAVICON_URL", "FOOTER_CONFIG_URL", "INDIGO_LIVE_BRANDING"
 ]:
     FRONTEND_SITE_CONFIG["commonAppConfig"][_tels_key] = MFE_CONFIG[_tels_key]
-{% endif %}
 {% endif %}
 """,
     )
