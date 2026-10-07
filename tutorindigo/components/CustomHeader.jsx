@@ -126,7 +126,7 @@ const CustomHeader = () => {
   const accountUrl = config.ACCOUNT_SETTINGS_URL;
   const studioUrl = config.STUDIO_BASE_URL;
   const canSeePrivilegedItems = authenticatedUser?.administrator === true;
-  const isPublicMfe = process.env.APP_ID === 'public';
+  const isPublicMfe = isMarketingMfe(config);
   const guestNav = config.INDIGO_HEADER_GUEST_NAV || DEFAULT_GUEST_NAV;
   const authNav = config.INDIGO_HEADER_AUTH_NAV || DEFAULT_AUTH_NAV;
   const navItems = authenticatedUser ? authNav : guestNav;

@@ -27,6 +27,9 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         "PRIMARY_COLOR": "#15376D",  # Indigo
         "ENABLE_DARK_TOGGLE": True,
         "ENABLE_LANGUAGE_MENU": True,
+        # Site template used until an administrator picks one on the theme configuration page,
+        # and when the LMS cannot be asked (see SITE_TEMPLATES below).
+        "SITE_TEMPLATE_DEFAULT": "template-1",
         # Languages shown in the MFE header dropdown (need 2+ to render).
         "SUPPORTED_LANGUAGES": [
             {"value": "en", "label": "English"},
@@ -90,14 +93,12 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
                 "url": "https://titaned.com/",
             },
         ],
-        # Marketing URLs for CustomHeader + IndigoFooter — overridable via tutor
-        # config. Tutor's default MFE routing serves the "public" app at
-        # ${MFE_HOST}/public, not the site root, so these work both from the
-        # public MFE itself and from every other MFE's footer linking back to
-        # it. Override HOME_URL if your deployment mounts the public MFE
-        # somewhere else, e.g.:
+        # Marketing URLs: the selected site template's marketing MFE, served at
+        # ${MFE_HOST}/public (MARKETING_MFE_MOUNT; INDIGO_SITE_TEMPLATES adds the
+        # origin in tutor dev). Override HOME_URL if your deployment mounts the
+        # marketing MFE somewhere else, e.g.:
         #   tutor config save --set 'INDIGO_HOME_URL="https://learn.example.com"'
-        # COURSES_URL: public MFE /public/courses (search submits here with ?q=).
+        # COURSES_URL: marketing MFE /public/courses (search submits here with ?q=).
         # LEARNER_DASHBOARD_URL is usually set by Tutor MFE; override if needed.
         "HOME_URL": "/public",
         "COURSES_URL": "/public/courses",
@@ -143,6 +144,11 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         #   tutor config save --set INDIGO_BRAND_THEME_SOURCE=live
         "BRAND_THEME_SOURCE": "live",
         "BRAND_THEME_DEVELOPMENT_URL": "http://localhost:3000",
+        # The same server as seen from inside the LMS container (control-panel reads the
+        # site template manifest dist/templates/index.json and proxies theme fonts from
+        # it). Docker's bridge gateway, e.g. http://172.22.0.1:3000; empty = not reachable
+        # (control-panel then lists the configured template ids without names).
+        "BRAND_THEME_DEVELOPMENT_URL_INTERNAL": "",
         "BRAND_THEME_DEPLOYED_URL": (
             "https://raw.githubusercontent.com/{{ INDIGO_BRAND_REPO }}/refs/heads/{{ INDIGO_BRAND_REPO_REF }}/dist"
         ),
@@ -237,6 +243,40 @@ hooks.Filters.CONFIG_OVERRIDES.add_items(list(config["overrides"].items()))
 
 
 #  MFEs that are styled using Indigo
+# Site templates: the designs an administrator switches between on control-panel's
+# theme configuration page ("Site template"). A template id is also the app id of
+# its marketing MFE -- the fork of frontend-app-tels-public (home, catalog, about,
+# contact, legal pages; the landing page of the platform, CATALOG_MICROFRONTEND_URL)
+# served at /<id>. Each id matches a build of tels-brand-openedx
+# (paragon/templates/<id>/, dist/templates/index.json) and the header / footer
+# components registered in SiteHeader.jsx / SiteFooter.jsx. The choice is read at
+# runtime (SITE_TEMPLATE_CONFIG_URL, SiteTemplate.jsx): no image build to switch.
+# Add a template: brand layer + components + registry entries + one entry here
+# (the marketing MFE is registered with tutor-mfe from this dict).
+SITE_TEMPLATES: dict[str, dict[str, str | int]] = {
+    "template-1": {
+        "repository": "https://github.com/TitanEd/frontend-app-tels-public.git",
+        "version": "native-plus-template-a",
+        "port": 2024,
+    },
+    "template-2": {
+        "repository": "https://github.com/TitanEd/frontend-app-tels-public.git",
+        "version": "native-plus-template-b",
+        "port": 2026,
+    },
+}
+
+# One landing URL for every template: the marketing MFE of the *selected* template is served at
+# MARKETING_MFE_MOUNT. Production (mfe image, Caddy): each template's build lives under
+# /public/_t/<id>/ and /public/* answers with a small dispatcher page that loads the selected
+# build (mfe-caddyfile patch below). tutor dev: every marketing dev server serves /public/*
+# itself when its template is selected and proxies it to the selected template's dev server
+# otherwise (mfe-webpack-dev-config patch below), so any marketing port shows the selection.
+# The apps are built with PUBLIC_PATH=/public/ (router basename) for both.
+MARKETING_MFE_MOUNT = "/public"
+# kept for the slot / override loops below: every marketing MFE shares the one mount
+MARKETING_MFE_MOUNTS: dict[str, str] = {template_id: MARKETING_MFE_MOUNT for template_id in SITE_TEMPLATES}
+
 indigo_styled_mfes = [
     "learning",
     "learner-dashboard",
@@ -251,16 +291,29 @@ indigo_styled_mfes = [
     "communications",
     "ora-grading",
     "admin-console",
-    "public",
+    *MARKETING_MFE_MOUNTS,
 ]
+
+# The template headers and footers (CustomHeader, Template2Header, IndigoFooter,
+# Template2Footer) render FontAwesome icons; only some MFEs depend on these
+# packages themselves, so every styled image installs them with the brand.
+_CHROME_NPM = " ".join(
+    [
+        "'@fortawesome/fontawesome-svg-core@1.2.36'",
+        "'@fortawesome/free-brands-svg-icons@5.15.4'",
+        "'@fortawesome/free-regular-svg-icons@5.15.4'",
+        "'@fortawesome/free-solid-svg-icons@5.15.4'",
+        "'@fortawesome/react-fontawesome@0.2.6'",
+    ]
+)
 
 for mfe in indigo_styled_mfes:
     hooks.Filters.ENV_PATCHES.add_items(
         [
             (
                 f"mfe-dockerfile-post-npm-install-{mfe}",
-                """
-RUN npm install '{{ INDIGO_BRAND_PACKAGE }}'
+                f"""
+RUN npm install '{{{{ INDIGO_BRAND_PACKAGE }}}}' {_CHROME_NPM}
 """,  # noqa: E501
             ),
         ]
@@ -286,19 +339,18 @@ for path in itertools.chain(
 
 
 # ---------------------------------------------------------------------------
-# TitanEd MFEs that are not stock openedx/frontend-app-* builds. Registered
-# with tutor-mfe here (same MFE_APPS filter a standalone "add my MFE" plugin
-# would use) so the app id, its brand/header/footer patches and its dev port
-# live in one place. The app id "public" must match indigo_styled_mfes and
-# HEADER_REPLACEMENT_SLOTS below; the live URL is {MFE_HOST}/public/. A
-# standalone plugin registering the same id with the same values is harmless.
+# The marketing MFEs of SITE_TEMPLATES, registered with tutor-mfe (same MFE_APPS
+# filter a standalone "add my MFE" plugin would use) so the app id, its
+# brand/header/footer patches, its dev port and its template live in one place.
+# A standalone plugin registering the same id with the same values is harmless.
 # ---------------------------------------------------------------------------
 FORKED_MFE_APPS: dict[str, dict[str, str | int]] = {
-    "public": {
-        "repository": "https://github.com/TitanEd/frontend-app-tels-public.git",
-        "port": 2024,
-        "version": "native-plus-template-a",
-    },
+    template_id: {
+        "repository": template["repository"],
+        "port": template["port"],
+        "version": template["version"],
+    }
+    for template_id, template in SITE_TEMPLATES.items()
 }
 
 
@@ -317,7 +369,7 @@ def _add_forked_mfe_apps(mfes: dict[str, MFE_ATTRS_TYPE]) -> dict[str, MFE_ATTRS
 # LearningHeader app (or header.v1 to an MFE that never mounts that slot)
 # silently no-ops. HEADER_REPLACEMENT_SLOTS is the source of truth.
 #
-#   public            empty HeaderSlot → header.v1 (insert only; no native default)
+#   marketing MFEs    empty HeaderSlot → header.v1 (insert only; no native default)
 #   account/profile/  native <Header /> → header_desktop.v1 + header_mobile.v1
 #   gradebook/        (Hide native default, insert CustomHeader on both so
 #   learner-dashboard/ Paragon desktop/mobile breakpoints each show one bar)
@@ -346,10 +398,12 @@ _LEARNING_HEADER_SLOTS: list[tuple[str, bool, str]] = [
 ]
 
 # mfe -> [(slot_id, hide_native_default, widget_id)]
+_MARKETING_HEADER_SLOTS: list[tuple[str, bool, str]] = [
+    ("org.openedx.frontend.layout.header.v1", False, "custom_header"),
+]
+
 HEADER_REPLACEMENT_SLOTS: dict[str, list[tuple[str, bool, str]]] = {
-    "public": [
-        ("org.openedx.frontend.layout.header.v1", False, "custom_header"),
-    ],
+    **{mfe: _MARKETING_HEADER_SLOTS for mfe in MARKETING_MFE_MOUNTS},
     "account": _DESKTOP_HEADER_SLOTS,
     "profile": _DESKTOP_HEADER_SLOTS,
     "gradebook": _DESKTOP_HEADER_SLOTS,
@@ -365,7 +419,7 @@ HEADER_STYLED_MFES = list(HEADER_REPLACEMENT_SLOTS)
 
 def _custom_header_plugins(widget_id: str, hide_default: bool) -> str:
     """Insert CustomHeader. Hide native default_contents only when the slot
-    already has a header (empty public HeaderSlot must not Hide — there is
+    already has a header (a marketing MFE's empty HeaderSlot must not Hide — there is
     nothing to hide, and Hide-without-default is how the bar disappeared).
     """
     hide = """
@@ -381,7 +435,7 @@ def _custom_header_plugins(widget_id: str, hide_default: bool) -> str:
                     id: '{widget_id}',
                     type: DIRECT_PLUGIN,
                     priority: 1,
-                    RenderWidget: CustomHeader,
+                    RenderWidget: SiteHeader,
                 }},
             }},
 """
@@ -487,11 +541,9 @@ for _mfe, _relpath in LEARNING_HEADER_WRAP_FILES.items():
 # merged twice); `atlas` is already on PATH by this point since the stock
 # `pull_translations` step just used it moments earlier in the same image.
 # ---------------------------------------------------------------------------
-# NOTE: no "public" -> "tels-public" remap here (there used to be one) --
-# HEADER_STYLED_MFES already says "public", the correct/actual app id (see
-# the FORKED_MFE_APPS comment above); remapping it here was only ever a
-# workaround for FORKED_MFE_APPS having the wrong key, now fixed at the
-# source instead.
+# NOTE: HEADER_STYLED_MFES uses the real app ids (the SITE_TEMPLATES ids for the
+# marketing MFEs), so no remapping is needed here.
+
 TRANSLATION_SAFETY_NET_MFES = sorted(set(HEADER_STYLED_MFES) | {"authoring"})
 
 _TRANSLATION_SAFETY_NET_DOCKERFILE = """
@@ -533,6 +585,213 @@ for _mfe in TRANSLATION_SAFETY_NET_MFES:
     )
 
 
+_TELS_PORTS_JINJA = [
+    "{% set tels_scheme = 'https' if ENABLE_HTTPS else 'http' %}",
+    "{% set tels_ports = namespace(by_app={}) %}",
+    "{% for tels_app, tels_mfe in iter_mfes() %}",
+    "{% set tels_ports.by_app = dict(tels_ports.by_app, **{tels_app: tels_mfe['port']}) %}",
+    "{% endfor %}",
+]
+
+
+def _marketing_host_jinja(with_port: str) -> str:
+    """
+    Jinja for the scheme + host (+ dev port) of the marketing URL. One URL for every template: without a web
+    proxy (tutor dev) it is the dev port of the default template's marketing MFE -- every marketing dev server
+    serves the selected template at /public (mfe-webpack-dev-config patch below).
+    """
+    return (
+        "{{ tels_scheme }}://{{ MFE_HOST }}"
+        "{% if " + with_port + " %}:"
+        "{{ tels_ports.by_app.get(INDIGO_SITE_TEMPLATE_DEFAULT, '') }}"
+        "{% endif %}"
+    )
+
+
+def _site_templates_mfe_config(with_port: str) -> str:
+    """
+    MFE_CONFIG['INDIGO_SITE_TEMPLATES']: id -> {mount, origin} for publicUrls.js / SiteHeader.jsx. The origin
+    is "" behind the web proxy (same host: relative links) and host:port without it (tutor dev).
+    """
+    return "\n".join(
+        _TELS_PORTS_JINJA
+        + ["MFE_CONFIG['INDIGO_SITE_TEMPLATES'] = {"]
+        + [
+            f"    '{template_id}': {{'mount': '{MARKETING_MFE_MOUNTS[template_id]}', "
+            "'origin': '{% if " + with_port + " %}" + _marketing_host_jinja(with_port) + "{% endif %}'},"
+            for template_id in SITE_TEMPLATES
+        ]
+        + [
+            "}",
+            "MFE_CONFIG['INDIGO_SITE_TEMPLATE_DEFAULT'] = '{{ INDIGO_SITE_TEMPLATE_DEFAULT }}'",
+            "",
+        ]
+    )
+
+
+def _site_templates_lms_settings(with_port: str) -> str:
+    """
+    LMS settings for the landing page: TELS_SITE_TEMPLATES (id -> marketing_url), read by control-panel's
+    SiteTemplateLandingMiddleware to send / and /courses to the selected template's marketing MFE, and
+    CATALOG_MICROFRONTEND_URL / ENABLE_CATALOG_MICROFRONTEND for the platform's own catalog links.
+    """
+    return "\n".join(
+        _TELS_PORTS_JINJA
+        + ["TELS_SITE_TEMPLATES = {"]
+        + [
+            f"    '{template_id}': {{'marketing_url': '"
+            + _marketing_host_jinja(with_port)
+            + f"{MARKETING_MFE_MOUNT}'}},"
+            for template_id in SITE_TEMPLATES
+        ]
+        + [
+            "}",
+            "TELS_SITE_TEMPLATE_DEFAULT = '{{ INDIGO_SITE_TEMPLATE_DEFAULT }}'",
+            "ENABLE_CATALOG_MICROFRONTEND = True",
+            "CATALOG_MICROFRONTEND_URL = TELS_SITE_TEMPLATES[TELS_SITE_TEMPLATE_DEFAULT]['marketing_url']",
+            "",
+        ]
+    )
+
+
+# Every marketing MFE: router basename /public (PUBLIC_PATH) and, in the production build, its
+# assets under /public/_t/<id>/ so the builds of two templates can live behind one URL.
+for _template_id in SITE_TEMPLATES:
+    hooks.Filters.ENV_PATCHES.add_item(
+        (
+            f"mfe-dockerfile-pre-npm-build-{_template_id}",
+            f"""
+# Site template "{_template_id}": one landing URL for every template (SITE_TEMPLATES in tutor-tels-theme-plugins)
+ENV PUBLIC_PATH='{MARKETING_MFE_MOUNT}/'
+RUN printf "\\nmodule.exports.output = {{ ...module.exports.output, publicPath: '{MARKETING_MFE_MOUNT}/_t/{_template_id}/' }};\\n" \\
+    >> webpack.prod-tutor.config.js
+""",
+        )
+    )
+
+# Production (mfe image): Caddy serves each template's build under /public/_t/<id>/ and answers
+# /public/* with a dispatcher page that loads the build of the template selected on the theme
+# configuration page (cookie first, then the LMS), so the URL stays /public/... whatever is selected.
+_MARKETING_CADDY = "\n".join(
+    [
+        "# Site templates (tutor-tels-theme-plugins): one landing URL, the selected template's marketing MFE",
+    ]
+    + [
+        line
+        for template_id in SITE_TEMPLATES
+        for line in [
+            f"@tels_marketing_{template_id.replace('-', '_')} path {MARKETING_MFE_MOUNT}/_t/{template_id} "
+            f"{MARKETING_MFE_MOUNT}/_t/{template_id}/*",
+            f"handle @tels_marketing_{template_id.replace('-', '_')} {{",
+            f"    uri strip_prefix {MARKETING_MFE_MOUNT}/_t/{template_id}",
+            f"    root * /openedx/dist/{template_id}",
+            "    try_files /{path} /index.html",
+            "    file_server",
+            "}",
+        ]
+    ]
+    + [
+        f"@tels_marketing path {MARKETING_MFE_MOUNT} {MARKETING_MFE_MOUNT}/*",
+        "handle @tels_marketing {",
+        '    header Content-Type "text/html; charset=utf-8"',
+        '    header Cache-Control "no-store"',
+        "    respond <<HTML",
+        "    <!doctype html>",
+        '    <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">',
+        "    <title>Loading…</title>",
+        "    <script>",
+        "    (async () => {",
+        "      const base = '" + MARKETING_MFE_MOUNT + "/_t/';",
+        "      const ids = " + repr(list(SITE_TEMPLATES)).replace("'", '"') + ";",
+        "      const fallback = '{{ INDIGO_SITE_TEMPLATE_DEFAULT }}';",
+        "      const cookie = /(?:^|; )tels-site-template=([a-z0-9-]+)/.exec(document.cookie);",
+        "      let id = cookie && ids.includes(cookie[1]) ? cookie[1] : null;",
+        "      if (!id) {",
+        "        try {",
+        "          const r = await fetch('{{ \"https\" if ENABLE_HTTPS else \"http\" }}://{{ LMS_HOST }}/ui_configuration/site-template');",
+        "          if (r.ok) { const d = await r.json(); if (ids.includes(d.template)) { id = d.template; } }",
+        "        } catch (e) { /* the default template below */ }",
+        "      }",
+        "      id = id || fallback;",
+        "      const html = await (await fetch(base + id + '/index.html', { cache: 'no-store' })).text();",
+        "      document.open(); document.write(html); document.close();",
+        "    })();",
+        "    </script></head><body></body></html>",
+        "    HTML 200",
+        "}",
+        "",
+    ]
+)
+hooks.Filters.ENV_PATCHES.add_item(("mfe-caddyfile", _MARKETING_CADDY))
+
+# tutor dev: each marketing dev server serves /public/* for its own template and proxies it (and the
+# webpack-dev-server websocket) to the selected template's dev server otherwise. The selection is
+# polled from the LMS inside the compose network.
+_MARKETING_DEV_PROXY = (
+    """
+// Site templates (tutor-tels-theme-plugins): /public/* on every marketing dev server shows the
+// template selected on control-panel's theme configuration page, proxying to that template's
+// dev server when it is another one.
+const telsMarketingServers = {"""
+    + ", ".join(f"'{template_id}': 'http://{template_id}:{template['port']}'" for template_id, template in SITE_TEMPLATES.items())
+    + """};
+if (telsMarketingServers[process.env.APP_ID]) {
+  let telsSelected = process.env.APP_ID;
+  const telsPoll = async () => {
+    try {
+      const response = await fetch('http://lms:8000/ui_configuration/site-template');
+      if (response.ok) {
+        const data = await response.json();
+        if (telsMarketingServers[data.template]) { telsSelected = data.template; }
+      }
+    } catch (e) { /* keep the last answer */ }
+  };
+  telsPoll();
+  setInterval(telsPoll, 5000).unref();
+  const telsProxied = (pathname) => telsSelected !== process.env.APP_ID
+    && (pathname === '"""
+    + MARKETING_MFE_MOUNT
+    + """' || pathname.startsWith('"""
+    + MARKETING_MFE_MOUNT
+    + """/'));
+  const telsTarget = { target: telsMarketingServers[process.env.APP_ID], router: () => telsMarketingServers[telsSelected], changeOrigin: true };
+  // The bundle middleware answers /public/* itself (it is this app's PUBLIC_PATH), so the proxy must run before it.
+  const { createProxyMiddleware } = require('http-proxy-middleware');
+  const telsHttpProxy = createProxyMiddleware(telsProxied, telsTarget);
+  const telsSetup = module.exports.devServer.setupMiddlewares;
+  module.exports.devServer.setupMiddlewares = (middlewares, devServer) => {
+    const result = telsSetup ? telsSetup(middlewares, devServer) : middlewares;
+    result.unshift({ name: 'tels-marketing-proxy', middleware: telsHttpProxy });
+    return result;
+  };
+  // The webpack-dev-server websocket of the page follows the proxied app (hot reload of the selected template).
+  const telsExisting = module.exports.devServer.proxy;
+  module.exports.devServer.proxy = [
+    ...(Array.isArray(telsExisting) ? telsExisting : Object.entries(telsExisting || {}).map(([context, options]) => ({ context: [context], ...options }))),
+    { context: (pathname) => pathname === '/ws' && telsSelected !== process.env.APP_ID, ...telsTarget, ws: true },
+  ];
+}
+"""
+)
+hooks.Filters.ENV_PATCHES.add_item(("mfe-webpack-dev-config", _MARKETING_DEV_PROXY))
+
+# tutor dev containers carry PUBLIC_PATH=/<app id>/ from their image (Dockerfile ENV, before
+# the pre-npm-build patch above sets /public/): rebuild the dev image of a marketing MFE
+# after adding it to SITE_TEMPLATES (tutor images build <id>-dev).
+
+hooks.Filters.ENV_PATCHES.add_items(
+    [
+        ("mfe-lms-common-settings", _site_templates_mfe_config("not ENABLE_WEB_PROXY")),
+        ("openedx-lms-common-settings", _site_templates_lms_settings("not ENABLE_WEB_PROXY")),
+        # tutor dev has no web proxy in front of the MFEs although ENABLE_WEB_PROXY
+        # stays true: every MFE is on its own port, so the origins carry the port.
+        ("openedx-lms-development-settings", _site_templates_mfe_config("true")),
+        ("openedx-lms-development-settings", _site_templates_lms_settings("true")),
+    ]
+)
+
+
+
 
 INDIGO_FOOTER_SLOT = (
     "org.openedx.frontend.layout.footer.v1",
@@ -547,7 +806,7 @@ INDIGO_FOOTER_SLOT = (
             id: 'indigo_footer',
             type: DIRECT_PLUGIN,
             priority: 1,
-            RenderWidget: IndigoFooter,
+            RenderWidget: SiteFooter,
         },
     },
     {
@@ -575,7 +834,7 @@ INDIGO_FOOTER_COMPAT_SLOT = (
             id: 'indigo_footer',
             type: DIRECT_PLUGIN,
             priority: 1,
-            RenderWidget: IndigoFooter,
+            RenderWidget: SiteFooter,
         },
     },
 """,
@@ -776,6 +1035,15 @@ FRONTEND_SITE_CONFIG["theme"] = {
         "dark": {"url": _TELS_BRAND_DIST + "/dark.min.css"},
     },
 }
+# The site template selected on control-panel's theme configuration page (SiteTemplate.jsx),
+# and where the brand CSS comes from, so the MFE loads that template's stylesheets:
+# "live" -- control-panel serves them; otherwise SiteTemplate.jsx rewrites the
+# PARAGON_THEME_URLS links to <base>/templates/<id>/.
+MFE_CONFIG["SITE_TEMPLATE_CONFIG_URL"] = LMS_ROOT_URL + "/ui_configuration/site-template"
+MFE_CONFIG["INDIGO_BRAND_THEME_SOURCE"] = "{{ INDIGO_BRAND_THEME_SOURCE }}"
+MFE_CONFIG["INDIGO_BRAND_THEME_BASE"] = _TELS_BRAND_DIST
+for _tels_key in ["SITE_TEMPLATE_CONFIG_URL", "INDIGO_BRAND_THEME_SOURCE", "INDIGO_BRAND_THEME_BASE"]:
+    FRONTEND_SITE_CONFIG["commonAppConfig"][_tels_key] = MFE_CONFIG[_tels_key]
 {% if INDIGO_BRAND_THEME_SOURCE == "live" %}
 # Logos and favicon from the ColorScheme admin. LOGO_WHITE_URL (dark
 # background variant) uses the footer logo upload, see control-panel's
@@ -825,7 +1093,11 @@ hooks.Filters.ENV_PATCHES.add_item(
     (
         "openedx-common-settings",
         """
+{% if INDIGO_BRAND_THEME_SOURCE == "development" and INDIGO_BRAND_THEME_DEVELOPMENT_URL_INTERNAL %}
+UI_CONFIGURATION_UPSTREAM_BRAND_CSS_BASE = "{{ INDIGO_BRAND_THEME_DEVELOPMENT_URL_INTERNAL.rstrip('/') }}"
+{% else %}
 UI_CONFIGURATION_UPSTREAM_BRAND_CSS_BASE = "{{ INDIGO_BRAND_THEME_DEPLOYED_URL.rstrip('/') }}"
+{% endif %}
 """,
     )
 )

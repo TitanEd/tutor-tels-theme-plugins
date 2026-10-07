@@ -1,5 +1,6 @@
 {{- patch("publicUrls.js") }}
 {{- patch("IndigoFooter.jsx") }}
+{{- patch("Template2Footer.jsx") }}
 {{- patch("MobileViewHeader.jsx") }}
 {{- patch("ThemedLogo.jsx") }}
 {{- patch("ToggleThemeButton.jsx") }}
@@ -8,4 +9,7 @@
 {{- patch("CustomHeaderUserMenuItem.jsx") }}
 {{- patch("CustomHeaderUserMenuDropdown.jsx") }}
 {{- patch("CustomHeader.jsx") }}
+{{- patch("Template2Header.jsx") }}
+{{- patch("SiteHeader.jsx") }}
+{{- patch("SiteFooter.jsx") }}
 {{- patch("CatalogCourseCard.jsx") }}

@@ -1,5 +1,7 @@
 import React, { useContext, useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import {
+  Link, NavLink, useLocation, useNavigate,
+} from 'react-router-dom';
 import Cookies from 'universal-cookie';
 
 import { getConfig } from '@edx/frontend-platform';
@@ -22,4 +24,17 @@ import {
   faBars,
   faTimes,
   faChevronDown,
+  // template-2 header: subject mega-menu icons
+  faPalette,
+  faBriefcase,
+  faCode,
+  faDatabase,
+  faGraduationCap,
+  faHeartbeat,
+  faUsers,
+  faSquareRootAlt,
+  faLaptopCode,
+  faFlask,
+  faGlobe,
+  faBookOpen,
 } from '@fortawesome/free-solid-svg-icons';
