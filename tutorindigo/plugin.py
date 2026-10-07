@@ -468,9 +468,11 @@ MFE_CONFIG["PARAGON_THEME_URLS"] = {
                 "brandOverride": _TELS_BRAND_DIST + "/light.min.css",
             },
         },
+        # Paragon publishes no dark variant (its dist has only light.min.css), so the
+        # brand dark stylesheet is both the base and the override, as in upstream Indigo.
         "dark": {
             "urls": {
-                "default": _TELS_PARAGON_CDN + "/dark.min.css",
+                "default": _TELS_BRAND_DIST + "/dark.min.css",
                 "brandOverride": _TELS_BRAND_DIST + "/dark.min.css",
             },
         },

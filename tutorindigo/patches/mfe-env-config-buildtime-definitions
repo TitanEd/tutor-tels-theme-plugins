@@ -1,1 +1,2 @@
+{{- patch("ThemeVariantSync.jsx") }}
 {{- patch("AddDarkTheme.jsx") }}
