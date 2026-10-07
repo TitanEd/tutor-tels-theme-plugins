@@ -180,6 +180,42 @@ const Template2ChromeLink = ({ href, className, children, ...rest }) => {
   return <a href={href} className={className} {...rest}>{children}</a>;
 };
 
+// Subject areas from the shared catalog API (control-panel course_metadata, the same endpoint the
+// marketing MFEs use): [{id, name, icon, course_count}] in the administrator's order. Icon keys are
+// the ones offered in Django admin; a subject without a key falls back to the icon of its name,
+// then to a book. Fetched once per page load; the static list above is the fallback when the LMS
+// cannot be reached.
+const TEMPLATE2_SUBJECT_ICON_BY_KEY = {
+  palette: faPalette,
+  briefcase: faBriefcase,
+  code: faCode,
+  database: faDatabase,
+  'graduation-cap': faGraduationCap,
+  heartbeat: faHeartbeat,
+  users: faUsers,
+  'square-root': faSquareRootAlt,
+  'laptop-code': faLaptopCode,
+  flask: faFlask,
+  globe: faGlobe,
+  'book-open': faBookOpen,
+};
+
+let template2SubjectsRequest = null;
+const template2LoadSubjects = (config) => {
+  if (!template2SubjectsRequest) {
+    const base = String(config.LMS_BASE_URL || '').replace(/\/$/, '');
+    template2SubjectsRequest = fetch(`${base}/api/v1/catalog/subjects/`, { credentials: 'include' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => (data && Array.isArray(data.results) ? data.results : null))
+      .catch(() => null);
+  }
+  return template2SubjectsRequest;
+};
+
+const template2SubjectIcon = (subject) => (
+  TEMPLATE2_SUBJECT_ICON_BY_KEY[subject.icon] || TEMPLATE2_SUBJECT_ICONS[subject.name] || faBookOpen
+);
+
 const Template2Header = () => {
   const intl = useIntl();
   const config = getConfig();
@@ -187,6 +223,17 @@ const Template2Header = () => {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [subjects, setSubjects] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    template2LoadSubjects(config).then((result) => {
+      if (!cancelled) {
+        setSubjects(result);
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const subjectAreas = subjects || TEMPLATE2_SUBJECTS.map((name) => ({ id: name, name, icon: '' }));
   const [searchQuery, setSearchQuery] = useState(() => {
     try {
       return new URLSearchParams(location.search).get('keywords') || '';
@@ -347,17 +394,19 @@ const Template2Header = () => {
               {intl.formatMessage(template2HeaderMessages.browseBySubject)}
             </h2>
             <ul className="tels-header__subjects">
-              {TEMPLATE2_SUBJECTS.map((subject) => (
-                <li key={subject}>
+              {subjectAreas.map((subject) => (
+                <li key={subject.id}>
                   <Template2ChromeLink
-                    href={publicCoursesHref(config, { subject })}
+                    href={publicCoursesHref(config, { subject: subject.name })}
                     className="tels-header__subject-link"
                     onClick={closeMenu}
                     tabIndex={menuOpen ? 0 : -1}
                   >
-                    <FontAwesomeIcon icon={TEMPLATE2_SUBJECT_ICONS[subject] || faBookOpen} />
+                    <FontAwesomeIcon icon={template2SubjectIcon(subject)} />
                     <span>
-                      {intl.formatMessage(template2HeaderMessages[TEMPLATE2_SUBJECT_MESSAGE_KEY[subject]])}
+                      {TEMPLATE2_SUBJECT_MESSAGE_KEY[subject.name]
+                        ? intl.formatMessage(template2HeaderMessages[TEMPLATE2_SUBJECT_MESSAGE_KEY[subject.name]])
+                        : subject.name}
                     </span>
                   </Template2ChromeLink>
                 </li>
