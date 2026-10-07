@@ -134,6 +134,43 @@ The indigo theme can’t override styles for MFEs directly. It overrides the sty
 This Tutor plugin is maintained by Muhammad Faraz Maqsood and Hammad Yousaf from `Edly <https://edly.io>`__. Community support is available from the official `Open edX forum <https://discuss.openedx.org>`__. Do you need help with this plugin? See the `troubleshooting <https://docs.tutor.edly.io/troubleshooting.html>`__ section from the Tutor documentation.
 
 
+Template-1 header, footer and marketing settings (TitanEd)
+---------------------------------------------------------
+
+Every MFE in ``indigo_styled_mfes`` (learner MFEs, Studio, the staff MFEs and the ``public``
+marketing MFE) gets the shared ``CustomHeader`` (``.custom-header``) and the site footer
+(``IndigoFooter``, ``.tels-footer``). The header is inserted on the host slot each MFE actually
+mounts (see ``HEADER_REPLACEMENT_SLOTS`` in ``tutorindigo/plugin.py``; slot ids are not
+interchangeable between header families). Discussions, Communications and ORA Grading do not
+mount a header slot upstream, so their ``<Header />`` is wrapped in a ``PluginSlot`` at image
+build (``LEARNING_HEADER_WRAP_FILES``). Styles come from the ``tels-brand-openedx`` design tokens
+(``_header.scss`` / ``_footer.scss`` / ``_public.scss``); the plugin only ships markup and copy.
+
+Settings (``tutor config save --set INDIGO_...=...``):
+
+- ``INDIGO_ENABLE_LANGUAGE_MENU`` / ``INDIGO_SUPPORTED_LANGUAGES`` — header language menu (needs two or more languages to render)
+- The template header keeps the native header controls (language menu and the ``INDIGO_ENABLE_DARK_TOGGLE`` dark-mode switch) at every viewport, next to the user menu or the hamburger button.
+- ``INDIGO_HOME_URL`` / ``INDIGO_COURSES_URL`` / ``INDIGO_ABOUT_URL`` / ``INDIGO_CONTACT_URL`` / ``INDIGO_PRIVACY_URL`` / ``INDIGO_TERMS_URL`` — marketing URLs used by the header and footer; defaults point at the ``public`` MFE (``/public/...``)
+- ``INDIGO_FOOTER_EXPLORE_LINKS`` / ``INDIGO_FOOTER_COMPANY_LINKS`` / ``INDIGO_FOOTER_SUPPORT_LINKS`` — footer columns (``titleKey`` + ``url``)
+- ``INDIGO_FOOTER_CONTACT`` / ``INDIGO_FOOTER_SOCIAL_LINKS`` — contact block and social icons (the live theme's footer configuration page in control-panel takes precedence when it is set)
+- ``INDIGO_FOOTER_NAV_LINKS`` — flat list kept for compatibility
+
+Forked MFEs (``FORKED_MFE_APPS``)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+MFEs that are not stock ``openedx/frontend-app-*`` builds are registered in the ``FORKED_MFE_APPS``
+dict of ``tutorindigo/plugin.py`` (``repository``, ``version``, ``port``), through ``tutormfe``'s
+``MFE_APPS`` filter. The ``public`` marketing MFE (``frontend-app-tels-public``) is registered
+there under the app id ``public``, which is also the id used in ``indigo_styled_mfes`` and
+``HEADER_REPLACEMENT_SLOTS`` and the live path ``{MFE_HOST}/public/``. To add another one: add an
+entry, ``tutor config save``, ``tutor images build mfe``; add its id to ``indigo_styled_mfes`` for
+the brand package and to ``HEADER_REPLACEMENT_SLOTS`` for the shared header. A standalone plugin
+that registers the same id with the same values is harmless and can be disabled.
+
+Translations of the header and footer strings are merged into every styled MFE's
+``src/i18n/messages/frontend-platform`` at image build (``TRANSLATION_SAFETY_NET_MFES``), so an
+MFE whose own Makefile does not pull ``frontend-component-header`` still gets them.
+
 License
 -------
 

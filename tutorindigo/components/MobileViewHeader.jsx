@@ -30,10 +30,13 @@ const MobileViewHeader = () => {
           }
         `}
       </style>
-      <a href={`${BASE_URL}/dashboard`} title="Open edX" className="logo">
-        <img className="logo-image" src={logoUrl} alt={intl.formatMessage(messages["mobile.view.header.logo.altText"])} />
-        <img className="logo-image logo-white" src={logoWhiteUrl} alt={intl.formatMessage(messages["mobile.view.header.logo.altText"])} />
-      </a>
+      <div className="d-flex align-items-center justify-content-between w-100">
+        <a href={`${BASE_URL}/dashboard`} title="Open edX" className="logo">
+          <img className="logo-image" src={logoUrl} alt={intl.formatMessage(messages["mobile.view.header.logo.altText"])} />
+          <img className="logo-image logo-white" src={logoWhiteUrl} alt={intl.formatMessage(messages["mobile.view.header.logo.altText"])} />
+        </a>
+        <HeaderControls />
+      </div>
     </>
   );
 };
