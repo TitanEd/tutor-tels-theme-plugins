@@ -150,6 +150,8 @@ Settings (``tutor config save --set INDIGO_...=...``):
 
 - ``INDIGO_ENABLE_LANGUAGE_MENU`` / ``INDIGO_SUPPORTED_LANGUAGES`` — header language menu (needs two or more languages to render)
 - The template header keeps the native header controls (language menu and the ``INDIGO_ENABLE_DARK_TOGGLE`` dark-mode switch) at every viewport, next to the user menu or the hamburger button.
+- The template header and footer apply to account, profile, learner-dashboard, gradebook, catalog, learning, discussions, communications, ora-grading and public. Authn has no site header, and authoring / admin-console keep the Studio header. The frontend-base ``site`` keeps its own shell header (styled to match) and gets the template footer through the compat slot.
+- Local development: the ``mfe`` container serves image-built MFEs, so header and footer changes there need ``tutor images build mfe``. Dev containers that mount the rendered ``env.config.jsx`` (``tutor mounts add "<app>:$(tutor config printroot)/env/plugins/mfe/build/mfe/env.config.jsx:/openedx/app/env.config.jsx"``) pick them up on ``tutor config save`` and a container restart.
 - ``INDIGO_HOME_URL`` / ``INDIGO_COURSES_URL`` / ``INDIGO_ABOUT_URL`` / ``INDIGO_CONTACT_URL`` / ``INDIGO_PRIVACY_URL`` / ``INDIGO_TERMS_URL`` — marketing URLs used by the header and footer; defaults point at the ``public`` MFE (``/public/...``)
 - ``INDIGO_FOOTER_EXPLORE_LINKS`` / ``INDIGO_FOOTER_COMPANY_LINKS`` / ``INDIGO_FOOTER_SUPPORT_LINKS`` — footer columns (``titleKey`` + ``url``)
 - ``INDIGO_FOOTER_CONTACT`` / ``INDIGO_FOOTER_SOCIAL_LINKS`` — contact block and social icons (the live theme's footer configuration page in control-panel takes precedence when it is set)

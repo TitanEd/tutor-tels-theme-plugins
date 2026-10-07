@@ -320,7 +320,8 @@ def _add_forked_mfe_apps(mfes: dict[str, MFE_ATTRS_TYPE]) -> dict[str, MFE_ATTRS
 #   public            empty HeaderSlot → header.v1 (insert only; no native default)
 #   account/profile/  native <Header /> → header_desktop.v1 + header_mobile.v1
 #   gradebook/        (Hide native default, insert CustomHeader on both so
-#   learner-dashboard  Paragon desktop/mobile breakpoints each show one bar)
+#   learner-dashboard/ Paragon desktop/mobile breakpoints each show one bar)
+#   catalog
 #   learning          HeaderSlot → header_learning.v1, plus desktop/mobile
 #                     for pages that still render plain <Header />
 #   discussions/      LearningHeader has no host slot in upstream git.
@@ -353,6 +354,7 @@ HEADER_REPLACEMENT_SLOTS: dict[str, list[tuple[str, bool, str]]] = {
     "profile": _DESKTOP_HEADER_SLOTS,
     "gradebook": _DESKTOP_HEADER_SLOTS,
     "learner-dashboard": _DESKTOP_HEADER_SLOTS,
+    "catalog": _DESKTOP_HEADER_SLOTS,  # CatalogHeader wraps the plain <Header />
     "learning": _LEARNING_HEADER_SLOTS + _DESKTOP_HEADER_SLOTS,
     "discussions": _LEARNING_HEADER_SLOTS,
     "communications": _LEARNING_HEADER_SLOTS,
