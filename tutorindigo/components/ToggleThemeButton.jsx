@@ -110,13 +110,23 @@ const ToggleThemeButton = () => {
     return <div />;
   }
 
-  const messages = {
-    "header.user.theme": {
+  const messages = defineMessages({
+    toggle: {
       id: "header.user.theme",
       defaultMessage: "Toggle Theme",
       description: "Toggle between light and dark theme",
     },
-  };
+    switchToLight: {
+      id: "tels.header.theme.switchToLight",
+      defaultMessage: "Switch to Light Mode",
+      description: "Screen-reader label of the theme switch while the dark theme is active",
+    },
+    switchToDark: {
+      id: "tels.header.theme.switchToDark",
+      defaultMessage: "Switch to Dark Mode",
+      description: "Screen-reader label of the theme switch while the light theme is active",
+    },
+  });
 
   return (
     <div className="theme-toggle-button mr-3">
@@ -131,11 +141,12 @@ const ToggleThemeButton = () => {
             onChange={onToggleTheme}
             onKeyUp={handleKeyUp}
             type="checkbox"
-            title={intl.formatMessage(messages["header.user.theme"])}
+            title={intl.formatMessage(messages.toggle)}
           />
           <span className="slider round" />
-          <span id="theme-label" className="sr-only">{`Switch to ${isDarkThemeEnabled ? "Light" : "Dark"
-            } Mode`}</span>
+          <span id="theme-label" className="sr-only">
+            {intl.formatMessage(isDarkThemeEnabled ? messages.switchToLight : messages.switchToDark)}
+          </span>
         </label>
       </div>
       <div className="dark-theme-icon">

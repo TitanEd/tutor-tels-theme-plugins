@@ -184,10 +184,14 @@ const IndigoFooter = () => {
   // Admin-provided copyright text is free-form (not a translatable ICU
   // message like the default) -- only {year}/{siteName} are substituted,
   // matching the two placeholders the default translated message supports.
-  const copyrightOverride = liveFooterConfig && liveFooterConfig.copyright_text;
-  const copyrightText = copyrightOverride
-    ? copyrightOverride.replace('{year}', year).replace('{siteName}', siteName)
-    : intl.formatMessage(indigoFooterMessages.copyright, { year, siteName });
+  // An override equal to the default English line is shown translated, like no override at all.
+  const copyrightOverride = String((liveFooterConfig && liveFooterConfig.copyright_text) || '')
+    .replace('{year}', year).replace('{siteName}', siteName);
+  // "© <year> <name>. All rights reserved." (the default wording) is shown translated, with that name.
+  const copyrightDefault = copyrightOverride.match(/^©\s*\d{4}\s+(.+?)\.?\s*All rights reserved\.?$/i);
+  const copyrightText = copyrightOverride && !copyrightDefault
+    ? copyrightOverride
+    : intl.formatMessage(indigoFooterMessages.copyright, { year, siteName: copyrightDefault ? copyrightDefault[1] : siteName });
 
   // Home/Courses/About/Contact/Privacy/Terms → public MFE (see publicUrls.js).
   const resolveUrl = (url) => resolvePublicMfeUrl(url, config);
@@ -212,6 +216,8 @@ const IndigoFooter = () => {
     </div>
   );
 
+  // Trailing whitespace of a formatted message is dropped, so the space before the link is added here.
+  const supportNotePrefix = intl.formatMessage(indigoFooterMessages.supportNotePrefix);
   const contactFormHref = resolveUrl(
     (exploreLinks.find((l) => l.titleKey === 'contact') || {}).url || '/contact',
   );
@@ -274,7 +280,8 @@ const IndigoFooter = () => {
               ))}
             </p>
             <p className="tels-footer__contact-note">
-              {intl.formatMessage(indigoFooterMessages.supportNotePrefix)}
+              {supportNotePrefix}
+              {/\S$/.test(supportNotePrefix) ? ' ' : ''}
               <a href={contactFormHref}>
                 {intl.formatMessage(indigoFooterMessages.contactForm)}
               </a>

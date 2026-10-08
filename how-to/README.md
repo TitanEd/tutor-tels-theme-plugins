@@ -10,6 +10,7 @@ Step-by-step guides for the TELS theme stack: this Tutor plugin (`indigo`), the 
 | [01 — Local development setup](01-local-development-setup.md) | Run the whole stack on a laptop with `tutor dev`, hot reload for brand CSS and MFE code |
 | [02 — Production setup](02-production-setup.md) | Configure, build and operate it on a server (`tutor local` / Kubernetes) |
 | [03 — Add a new site template](03-add-a-new-site-template.md) | Ship a `template-3`: marketing MFE branch, brand layer, header and footer components, registration |
+| [04 — Translations](04-translations.md) | Hindi, Arabic and Spanish for both templates, header, footer and the control-panel APIs: resources in `TitanEd/openedx-translations`, local pull, adding strings or languages |
 
 ## How the pieces fit
 

@@ -13,7 +13,12 @@ const messages = {
     id: 'generic.course-card.start-date',
     defaultMessage: 'Starts: {startDate}',
     description: 'Start date.',
-  }
+  },
+  learnMore: {
+    id: 'generic.course-card.learn-more',
+    defaultMessage: 'Learn More',
+    description: 'Catalog course card button that opens the course about page.',
+  },
 };
 
 const formatDate = (dateString, intl) => {
@@ -77,7 +82,9 @@ const CourseCard = ({
           as={Link}
           to={courseId ? `/courses/${courseId}/about` : undefined}
           className="mx-4 mb-4"
-        >Learn More</Button>
+        >
+          {intl.formatMessage(messages.learnMore)}
+        </Button>
       )}
       <Card.Footer className="justify-content-start py-3">
         <Icon className="mr-2" src={Calendar} aria-label={intl.formatMessage(messages.startDate)} />

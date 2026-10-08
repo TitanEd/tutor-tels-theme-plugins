@@ -38,7 +38,7 @@ const template2FooterMessages = defineMessages({
   home: { id: 'indigo.footer.link.home', defaultMessage: 'Home', description: 'Footer Home link (public MFE)' },
   courses: { id: 'indigo.footer.link.courses', defaultMessage: 'Courses', description: 'Footer Courses link' },
   privacy: { id: 'indigo.footer.link.privacy', defaultMessage: 'Privacy Policy', description: 'Footer Privacy Policy link' },
-  terms: { id: 'indigo.footer.link.terms', defaultMessage: 'Terms of Use', description: 'Footer Terms of Use link' },
+  terms: { id: 'indigo.footer.link.termsOfUse', defaultMessage: 'Terms of Use', description: 'Footer Terms of Use link' },
   about: { id: 'indigo.footer.link.about', defaultMessage: 'About Us', description: 'Footer About Us link' },
   contact: { id: 'indigo.footer.link.contact', defaultMessage: 'Contact', description: 'Footer Contact link' },
   homeAria: {
@@ -57,7 +57,7 @@ const template2FooterMessages = defineMessages({
     description: 'Footer contact column heading (visually hidden)',
   },
   socialLabel: {
-    id: 'indigo.footer.social.label',
+    id: 'indigo.footer.social.mediaLabel',
     defaultMessage: 'Social media',
     description: 'Footer social links list label',
   },
@@ -129,9 +129,13 @@ const Template2Footer = () => {
     ? live.social_links
     : (config.INDIGO_FOOTER_SOCIAL_LINKS || [])
   ).filter((link) => link && TEMPLATE2_SOCIAL_ICONS[link.name] && /^https?:\/\//i.test(link.url || ''));
-  const copyright = live.copyright_text
-    ? String(live.copyright_text).replace('{year}', year).replace('{siteName}', siteName)
-    : intl.formatMessage(template2FooterMessages.copyright, { year, siteName });
+  // The admin's copyright text is free-form (not translated); the default English line is translated.
+  const copyrightOverride = String(live.copyright_text || '').replace('{year}', year).replace('{siteName}', siteName);
+  // "© <year> <name>. All rights reserved." (the default wording) is shown translated, with that name.
+  const copyrightDefault = copyrightOverride.match(/^©\s*\d{4}\s+(.+?)\.?\s*All rights reserved\.?$/i);
+  const copyright = copyrightOverride && !copyrightDefault
+    ? copyrightOverride
+    : intl.formatMessage(template2FooterMessages.copyright, { year, siteName: copyrightDefault ? copyrightDefault[1] : siteName });
 
   return (
     <footer className="tels-footer" role="contentinfo">

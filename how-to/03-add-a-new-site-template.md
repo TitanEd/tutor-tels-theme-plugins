@@ -27,7 +27,9 @@ Keep as is:
   `src/plugin-slots/localIndigoConfig.js`, `ChromeLink.jsx` (in-app links).
 - The local `TelsHeader.jsx` / `IndigoFooter.jsx` copies are only for a standalone `npm start`; the Tutor
   configuration replaces them.
-- `Makefile`: `pull_translations` must use `mkdir -p src/i18n/messages` (the branch commits that folder).
+- `Makefile`: `pull_translations` pulls `translations/frontend-app-tels-public-template-3` (a resource you create in
+  `TitanEd/openedx-translations`, see [04 — Translations](04-translations.md)) and uses `mkdir -p src/i18n/messages`;
+  `src/i18n/messages/` stays git-ignored and `src/i18n/index.js` is the two-line placeholder.
 
 Set:
 
@@ -35,8 +37,9 @@ Set:
   `PARAGON_THEME_URLS` lines.
 - Page styles: use design tokens (`var(--pgn-...)`) only, and class names scoped to this template
   (for example `.tels3-*` or your own prefix) so they cannot collide with other templates' pages in the brand repo.
-- Translations: `src/i18n/messages/*.json` and `defineMessages` ids; the plugin's translation safety net
-  fills header/footer strings at image build.
+- Translations: every visible string through `defineMessages`; the plugin's translation safety net fills
+  header/footer strings at image build. Hindi, Arabic and Spanish files go in the fork, not in the branch
+  ([04 — Translations](04-translations.md)).
 
 Push the branch. Note the dev port you will give it (unused: 2024 and 2026 are taken).
 

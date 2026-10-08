@@ -33,6 +33,7 @@ config: t.Dict[str, t.Dict[str, t.Any]] = {
         # Languages shown in the MFE header dropdown (need 2+ to render).
         "SUPPORTED_LANGUAGES": [
             {"value": "en", "label": "English"},
+            {"value": "hi", "label": "हिन्दी"},
             {"value": "ar", "label": "العربية"},
             {"value": "es-419", "label": "Español (Latinoamérica)"},
             {"value": "fr", "label": "Français"},
